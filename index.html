@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ElektroMistrz – Profesjonalne Usługi Elektryczne</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@400;700;900&display=swap');
+
+  :root {
+    --w: #FFFFFF;
+    --g: #cccccc;
+    --dim: #888888;
+    --dark: #060606;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--dark);
+    color: #fff;
+    font-family: 'Rajdhani', sans-serif;
+    overflow-x: hidden;
+    cursor: none;
+  }
+
+  /* ── CUSTOM CURSOR ── */
+  #cursor {
+    position: fixed;
+    width: 24px; height: 24px;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: transform 0.05s;
+  }
+  #cursor svg { filter: drop-shadow(0 0 6px #fff); animation: cursorSpin 0.4s steps(1) infinite; }
+  @keyframes cursorSpin {
+    0%,100% { filter: drop-shadow(0 0 6px #fff); }
+    50%      { filter: drop-shadow(0 0 14px #fff) brightness(1.5); }
+  }
+
+  /* ── CANVASES ── */
+  #bgCanvas, #matrixCanvas, #arcCanvas {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  #bgCanvas  { z-index: 0; }
+  #arcCanvas { z-index: 2; }
+
+  /* ── CABLES ── */
+  .cables-svg {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 220px;
+    z-index: 3; pointer-events: none;
+  }
+
+  /* ── TICKER ── */
+  .ticker {
+    position: fixed; bottom: 0; left: 0;
+    width: 100%; z-index: 100;
+    background: rgba(0,0,0,0.85);
+    border-top: 1px solid rgba(255,255,255,0.15);
+    padding: 8px 0;
+    overflow: hidden;
+  }
+  .ticker-inner {
+    display: flex; gap: 80px;
+    white-space: nowrap;
+    animation: tickerScroll 28s linear infinite;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.7rem;
+    letter-spacing: 3px;
+    color: rgba(255,255,255,0.5);
+  }
+  .ticker-inner span { color: #fff; }
+  @keyframes tickerScroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+
+  /* ── HEADER ── */
+  header {
+    position: relative; z-index: 10;
+    text-align: center;
+    padding: 140px 20px 90px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.75) 0%, transparent 100%);
+  }
+
+  .bolt-icon {
+    font-size: 90px; display: block;
+    animation: boltPulse 0.6s infinite alternate;
+    filter: drop-shadow(0 0 30px #fff);
+  }
+  @keyframes boltPulse {
+    from { transform: scale(1);    filter: drop-shadow(0 0 20px #fff); }
+    to   { transform: scale(1.1); filter: drop-shadow(0 0 60px #fff) brightness(1.3); }
+  }
+
+  h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(2.4rem, 7vw, 6rem);
+    font-weight: 900; letter-spacing: 6px; text-transform: uppercase;
+    background: linear-gradient(90deg, #fff 0%, #aaa 40%, #fff 60%, #ddd 100%);
+    background-size: 300%;
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    animation: gradientShift 4s linear infinite, flicker 5s infinite;
+    position: relative;
+  }
+  /* glitch layers */
+  h1::before, h1::after {
+    content: attr(data-text);
+    position: absolute; top: 0; left: 0; right: 0;
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background: linear-gradient(90deg, #fff, #aaa);
+    opacity: 0;
+  }
+  h1::before { animation: glitchBefore 6s infinite; color: #fff; }
+  h1::after  { animation: glitchAfter  6s infinite; color: #fff; }
+
+  @keyframes glitchBefore {
+    0%,94%,100% { opacity:0; clip-path: none; }
+    95% { opacity:0.7; clip-path: polygon(0 20%,100% 20%,100% 40%,0 40%); transform: translate(-3px,0); }
+    96% { opacity:0.4; clip-path: polygon(0 60%,100% 60%,100% 80%,0 80%); transform: translate(3px,0); }
+  }
+  @keyframes glitchAfter {
+    0%,96%,100% { opacity:0; }
+    97% { opacity:0.6; clip-path: polygon(0 10%,100% 10%,100% 30%,0 30%); transform: translate(4px,1px); }
+    98% { opacity:0; }
+  }
+  @keyframes gradientShift { from { background-position:0% } to { background-position:300% } }
+  @keyframes flicker {
+    0%,95%,100% { opacity:1 }
+    96% { opacity:0.3 } 97% { opacity:1 } 99% { opacity:0.5 }
+  }
+
+  /* typing tagline */
+  .tagline {
+    font-size: 1.2rem; letter-spacing: 5px; color: #bbb;
+    text-transform: uppercase; margin-top: 12px;
+    border-right: 2px solid #fff;
+    white-space: nowrap; overflow: hidden;
+    width: 0; display: inline-block;
+    animation: typing 2.5s steps(38,end) 0.5s forwards, blink 0.6s step-end infinite;
+    text-shadow: 0 0 15px rgba(255,255,255,0.4);
+  }
+  @keyframes typing { from { width:0 } to { width: 38ch } }
+  @keyframes blink   { 50% { border-color: transparent } }
+
+  .cta-btn {
+    display: inline-block; margin-top: 40px;
+    padding: 18px 50px;
+    font-family: 'Orbitron', sans-serif; font-size: 1rem;
+    font-weight: 700; text-transform: uppercase; letter-spacing: 3px;
+    color: #000; background: #fff;
+    border: none; cursor: none;
+    clip-path: polygon(10px 0%,100% 0%,calc(100% - 10px) 100%,0% 100%);
+    text-decoration: none;
+    transition: all 0.2s;
+    animation: btnGlow 1.5s infinite alternate;
+    position: relative; overflow: hidden;
+  }
+  .cta-btn::after {
+    content: '';
+    position: absolute; top: -50%; left: -75%;
+    width: 50%; height: 200%;
+    background: rgba(255,255,255,0.3);
+    transform: skewX(-20deg);
+    animation: btnShine 3s infinite;
+  }
+  @keyframes btnShine { 0%,100% { left:-75% } 40%,60% { left:150% } }
+  @keyframes btnGlow {
+    from { box-shadow: 0 0 15px rgba(255,255,255,0.5), 0 0 30px rgba(255,255,255,0.2); }
+    to   { box-shadow: 0 0 40px #fff, 0 0 80px rgba(255,255,255,0.5); }
+  }
+  .cta-btn:hover { background: #eee; transform: scale(1.04); }
+
+  /* ── SPARKS ── */
+  .spark {
+    position: fixed; border-radius: 50%;
+    background: #fff; pointer-events: none; z-index: 9998;
+    animation: sparkFly 0.7s ease-out forwards;
+  }
+  @keyframes sparkFly {
+    0%   { opacity:1; transform:translate(0,0) scale(1); }
+    100% { opacity:0; transform:translate(var(--tx),var(--ty)) scale(0); }
+  }
+
+  /* ── FLASH OVERLAY ── */
+  #flash {
+    position: fixed; inset: 0;
+    background: #fff; opacity: 0;
+    pointer-events: none; z-index: 200;
+    transition: opacity 0.05s;
+  }
+
+  /* ── SECTIONS ── */
+  section {
+    position: relative; z-index: 10;
+    max-width: 1100px; margin: 0 auto; padding: 60px 20px;
+  }
+
+  .section-title {
+    font-family: 'Orbitron', sans-serif; font-size: 1.8rem;
+    text-transform: uppercase; letter-spacing: 4px;
+    color: #fff; text-shadow: 0 0 20px rgba(255,255,255,0.6);
+    margin-bottom: 40px; display: flex; align-items: center; gap: 15px;
+  }
+  .section-title::after {
+    content: ''; flex: 1; height: 1px;
+    background: linear-gradient(90deg, #fff, transparent);
+    box-shadow: 0 0 8px #fff;
+  }
+
+  .divider {
+    width: 100%; height: 1px; position: relative; z-index: 10;
+    background: linear-gradient(90deg, transparent, #fff, transparent);
+    box-shadow: 0 0 10px #fff; margin: 10px 0;
+  }
+
+  /* ── SERVICES ── */
+  .services-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+  }
+
+  .service-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.12);
+    padding: 30px; position: relative; overflow: hidden;
+    clip-path: polygon(0 0, calc(100% - 15px) 0, 100% 15px, 100% 100%, 15px 100%, 0 calc(100% - 15px));
+    transition: border-color 0.3s, box-shadow 0.3s;
+    transform-style: preserve-3d;
+    /* entrance */
+    opacity: 0; transform: translateY(30px);
+  }
+  .service-card.visible {
+    animation: cardIn 0.5s ease forwards;
+  }
+  @keyframes cardIn {
+    to { opacity:1; transform:translateY(0); }
+  }
+  .service-card::before {
+    content: ''; position: absolute; top: 0; left: -100%;
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent);
+    transition: left 0.5s;
+  }
+  .service-card:hover { border-color: rgba(255,255,255,0.5); box-shadow: 0 0 30px rgba(255,255,255,0.1); }
+  .service-card:hover::before { left: 100%; }
+
+  .service-icon { font-size: 2.5rem; margin-bottom: 15px; display: block; }
+  .service-card h3 { font-family:'Orbitron',sans-serif; font-size:0.9rem; color:#fff; letter-spacing:2px; margin-bottom:10px; }
+  .service-card p  { color:rgba(255,255,255,0.6); font-size:0.95rem; line-height:1.6; }
+
+  /* ── STATS ── */
+  .stats-row {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 20px; text-align: center;
+  }
+  .stat-box {
+    border: 1px solid rgba(255,255,255,0.15);
+    padding: 30px 15px; background: rgba(255,255,255,0.02);
+    position: relative; overflow: hidden;
+  }
+  .stat-box::after {
+    content: ''; position: absolute; bottom: 0; left: 0;
+    width: 100%; height: 1px; background: #fff;
+    box-shadow: 0 0 8px #fff; animation: scanLine 2.5s infinite;
+  }
+  @keyframes scanLine {
+    0%   { transform:scaleX(0); transform-origin:left; }
+    50%  { transform:scaleX(1); transform-origin:left; }
+    51%  { transform:scaleX(1); transform-origin:right; }
+    100% { transform:scaleX(0); transform-origin:right; }
+  }
+  .stat-num {
+    font-family:'Orbitron',sans-serif; font-size:2.8rem; font-weight:900;
+    color:#fff; text-shadow:0 0 20px rgba(255,255,255,0.8); display:block;
+  }
+  .stat-label { color:rgba(255,255,255,0.5); font-size:0.8rem; letter-spacing:2px; text-transform:uppercase; }
+
+  /* ── VOLT METER ── */
+  .voltmeter {
+    display: flex; align-items: center; gap: 20px;
+    background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.1);
+    padding: 20px 30px; margin-top: 30px;
+  }
+  .volt-label { font-family:'Orbitron',sans-serif; font-size:0.75rem; color:#888; letter-spacing:3px; min-width:90px; }
+  .volt-bar-wrap { flex:1; height:6px; background:rgba(255,255,255,0.08); position:relative; overflow:hidden; }
+  .volt-bar { height:100%; background:#fff; box-shadow:0 0 10px #fff; animation: voltPulse 2s ease-in-out infinite alternate; }
+  .volt-bar-2 { animation-delay: 0.7s; }
+  .volt-bar-3 { animation-delay: 1.3s; }
+  @keyframes voltPulse {
+    from { width: 40%; opacity:0.5; }
+    to   { width: 95%; opacity:1; }
+  }
+  .volt-val { font-family:'Orbitron',sans-serif; font-size:1rem; color:#fff; min-width:55px; text-align:right; }
+
+  /* ── CONTACT ── */
+  .contact-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+  }
+  .contact-item {
+    background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.12);
+    padding: 25px; display:flex; align-items:center; gap:15px;
+    transition: all 0.3s;
+  }
+  .contact-item:hover {
+    border-color: rgba(255,255,255,0.5);
+    background: rgba(255,255,255,0.05);
+    box-shadow: 0 0 25px rgba(255,255,255,0.08);
+  }
+  .contact-icon { font-size:2rem; }
+  .contact-item strong { display:block; color:#888; font-family:'Orbitron',sans-serif; font-size:0.7rem; letter-spacing:2px; }
+  .contact-item span { font-size:1.05rem; color:#fff; }
+
+  /* ── WARN STRIP ── */
+  .warn-strip {
+    position: relative; z-index: 10; height: 6px;
+    background: repeating-linear-gradient(
+      45deg,
+      rgba(255,255,255,0.12) 0px, rgba(255,255,255,0.12) 14px,
+      rgba(255,255,255,0.04) 14px, rgba(255,255,255,0.04) 28px
+    );
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    position: relative; z-index: 10; text-align:center;
+    padding: 30px 20px 60px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.25); font-size:0.8rem; letter-spacing:2px;
+  }
+
+  /* ── SCROLL FADE IN ── */
+  .fade-in { opacity:0; transform:translateY(20px); transition: opacity 0.6s, transform 0.6s; }
+  .fade-in.visible { opacity:1; transform:translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- Custom cursor -->
+<div id="cursor">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <polygon points="12,1 16,10 12,8 8,10" fill="white"/>
+    <polygon points="12,23 8,14 12,16 16,14" fill="white" opacity="0.5"/>
+  </svg>
+</div>
+
+<!-- Flash overlay for lightning strikes -->
+<div id="flash"></div>
+
+<!-- Canvases -->
+<canvas id="bgCanvas"></canvas>
+<canvas id="arcCanvas"></canvas>
+
+<!-- Hanging cables -->
+<svg class="cables-svg" viewBox="0 0 1440 220" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="glow2"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <!-- main cables -->
+  <path id="c1" d="M -20,0 Q 100,130 260,95 Q 380,65 500,115" stroke="#2a2a2a" stroke-width="5" fill="none"/>
+  <path id="c2" d="M 180,0 Q 320,140 470,105 Q 590,75 710,120" stroke="#333" stroke-width="3" fill="none"/>
+  <path id="c3" d="M 450,0 Q 600,150 760,110 Q 880,78 1010,125" stroke="#2a2a2a" stroke-width="5" fill="none"/>
+  <path id="c4" d="M 720,0 Q 870,138 1020,100 Q 1150,68 1270,115" stroke="#333" stroke-width="3" fill="none"/>
+  <path id="c5" d="M 1050,0 Q 1200,130 1360,95 Q 1460,74 1530,110" stroke="#2a2a2a" stroke-width="4" fill="none"/>
+  <!-- glow highlights -->
+  <path d="M -20,0 Q 100,130 260,95 Q 380,65 500,115" stroke="rgba(255,255,255,0.12)" stroke-width="1" fill="none" filter="url(#glow)"/>
+  <path d="M 450,0 Q 600,150 760,110 Q 880,78 1010,125" stroke="rgba(255,255,255,0.1)" stroke-width="1" fill="none" filter="url(#glow)"/>
+  <path d="M 1050,0 Q 1200,130 1360,95 Q 1460,74 1530,110" stroke="rgba(255,255,255,0.12)" stroke-width="1" fill="none" filter="url(#glow)"/>
+  <!-- spark nodes -->
+  <circle id="node1" cx="260" cy="95" r="5" fill="#fff" filter="url(#glow2)" opacity="0.9"/>
+  <circle id="node2" cx="760" cy="110" r="5" fill="#fff" filter="url(#glow2)" opacity="0.8"/>
+  <circle id="node3" cx="1020" cy="100" r="5" fill="#fff" filter="url(#glow2)" opacity="0.9"/>
+  <!-- hanging short wires -->
+  <line x1="260" y1="95" x2="260" y2="130" stroke="#444" stroke-width="2"/>
+  <line x1="760" y1="110" x2="760" y2="145" stroke="#444" stroke-width="2"/>
+  <line x1="1020" y1="100" x2="1020" y2="135" stroke="#444" stroke-width="2"/>
+  <!-- bulb shapes -->
+  <ellipse cx="260" cy="138" rx="8" ry="10" fill="none" stroke="#555" stroke-width="1.5"/>
+  <ellipse cx="760" cy="153" rx="8" ry="10" fill="none" stroke="#555" stroke-width="1.5"/>
+  <ellipse cx="1020" cy="143" rx="8" ry="10" fill="none" stroke="#555" stroke-width="1.5"/>
+</svg>
+
+<!-- TICKER -->
+<div class="ticker">
+  <div class="ticker-inner" id="ticker">
+    <span>⚡ POGOTOWIE ELEKTRYCZNE 24/7</span> · CZAS REAKCJI: 60 MINUT · <span>📞 +48 600 123 456</span> · WARSZAWA I OKOLICE · <span>⚡ INSTALACJE · POMIARY · MODERNIZACJE · ALARMY</span> · GWARANCJA NA KAŻDĄ INSTALACJĘ · SEP UPRAWNIENIA E/D/G · <span>⚡ POGOTOWIE ELEKTRYCZNE 24/7</span> · CZAS REAKCJI: 60 MINUT · <span>📞 +48 600 123 456</span> · WARSZAWA I OKOLICE · <span>⚡ INSTALACJE · POMIARY · MODERNIZACJE · ALARMY</span> · GWARANCJA NA KAŻDĄ INSTALACJĘ · SEP UPRAWNIENIA E/D/G ·
+  </div>
+</div>
+
+<div class="warn-strip"></div>
+
+<!-- HEADER -->
+<header>
+  <span class="bolt-icon">⚡</span>
+  <h1 data-text="ElektroMistrz">ElektroMistrz</h1>
+  <p class="tagline">Profesjonalne Usługi Elektryczne</p>
+  <a href="#kontakt" class="cta-btn">Zadzwoń Teraz</a>
+</header>
+
+<div class="divider"></div>
+
+<!-- SERVICES -->
+<section>
+  <h2 class="section-title fade-in">⚡ Usługi</h2>
+  <div class="services-grid">
+    <div class="service-card"><span class="service-icon">🔌</span><h3>Instalacje Elektryczne</h3><p>Kompleksowe instalacje w domach, biurach i obiektach przemysłowych. Solidnie i zgodnie z normami.</p></div>
+    <div class="service-card"><span class="service-icon">🏠</span><h3>Remonty i Modernizacje</h3><p>Wymiana starych instalacji, rozdzielnic i zabezpieczeń. Pełna diagnostyka przed i po remoncie.</p></div>
+    <div class="service-card"><span class="service-icon">⚙️</span><h3>Pomiary i Odbiory</h3><p>Pomiary ochronne, badanie skuteczności zerowania i izolacji. Protokoły gotowe dla każdego zlecenia.</p></div>
+    <div class="service-card"><span class="service-icon">🔦</span><h3>Oświetlenie LED</h3><p>Projektowanie i montaż nowoczesnych systemów oświetleniowych. Obniż rachunki nawet o 70%.</p></div>
+    <div class="service-card"><span class="service-icon">🛡️</span><h3>Alarmy i Monitoring</h3><p>Systemy alarmowe, kamery CCTV, inteligentny dom. Twoje bezpieczeństwo to nasz priorytet.</p></div>
+    <div class="service-card"><span class="service-icon">🚨</span><h3>Pogotowie Elektryczne</h3><p>Awarie elektryczne 24/7. Przyjeżdżamy w ciągu 60 minut. Nie zostawiamy Cię bez prądu.</p></div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- STATS -->
+<section>
+  <h2 class="section-title fade-in">⚡ W liczbach</h2>
+  <div class="stats-row">
+    <div class="stat-box fade-in"><span class="stat-num" data-target="850">0</span><span class="stat-label">Zadowolonych klientów</span></div>
+    <div class="stat-box fade-in"><span class="stat-num" data-target="15">0</span><span class="stat-label">Lat doświadczenia</span></div>
+    <div class="stat-box fade-in"><span class="stat-num" data-target="1200">0</span><span class="stat-label">Wykonanych zleceń</span></div>
+    <div class="stat-box fade-in"><span class="stat-num" data-target="60">0</span><span class="stat-label">Min czas reakcji</span></div>
+  </div>
+
+  <!-- VOLTMETER -->
+  <div class="voltmeter fade-in" style="margin-top:30px">
+    <span class="volt-label">NAPIĘCIE</span>
+    <div class="volt-bar-wrap"><div class="volt-bar" style="width:78%"></div></div>
+    <span class="volt-val">230 V</span>
+  </div>
+  <div class="voltmeter fade-in">
+    <span class="volt-label">NATĘŻENIE</span>
+    <div class="volt-bar-wrap"><div class="volt-bar volt-bar-2" style="width:55%"></div></div>
+    <span class="volt-val">16 A</span>
+  </div>
+  <div class="voltmeter fade-in">
+    <span class="volt-label">MOC</span>
+    <div class="volt-bar-wrap"><div class="volt-bar volt-bar-3" style="width:88%"></div></div>
+    <span class="volt-val">3.68 kW</span>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- CONTACT -->
+<section id="kontakt">
+  <h2 class="section-title fade-in">⚡ Kontakt</h2>
+  <div class="contact-grid">
+    <div class="contact-item fade-in"><span class="contact-icon">📞</span><div><strong>Telefon</strong><span>+48 600 123 456</span></div></div>
+    <div class="contact-item fade-in"><span class="contact-icon">📧</span><div><strong>E-mail</strong><span>kontakt@elektromistrz.pl</span></div></div>
+    <div class="contact-item fade-in"><span class="contact-icon">📍</span><div><strong>Obszar działania</strong><span>Warszawa i okolice</span></div></div>
+    <div class="contact-item fade-in"><span class="contact-icon">🕐</span><div><strong>Godziny pracy</strong><span>Pon–Sob 7:00–20:00</span></div></div>
+  </div>
+</section>
+
+<div class="warn-strip"></div>
+
+<footer class="fade-in">
+  <p>⚡ ElektroMistrz &copy; 2024 — Wszelkie prawa zastrzeżone ⚡</p>
+  <p style="margin-top:8px;font-size:0.7rem;opacity:0.6;">NR UPRAWNIEŃ: SEP E / D / G · Ubezpieczenie OC · Gwarancja na każdą instalację</p>
+</footer>
+
+<script>
+// ══════════════════════════════════════════
+//  CUSTOM CURSOR
+// ══════════════════════════════════════════
+const cursor = document.getElementById('cursor');
+document.addEventListener('mousemove', e => {
+  cursor.style.left = e.clientX + 'px';
+  cursor.style.top  = e.clientY + 'px';
+});
+
+// ══════════════════════════════════════════
+//  SHARED RESIZE
+// ══════════════════════════════════════════
+const bgC  = document.getElementById('bgCanvas');
+const arcC = document.getElementById('arcCanvas');
+const bgX  = bgC.getContext('2d');
+const arcX = arcC.getContext('2d');
+let W, H;
+function resize() {
+  W = bgC.width = arcC.width = window.innerWidth;
+  H = bgC.height = arcC.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ══════════════════════════════════════════
+//  LIGHTNING
+// ══════════════════════════════════════════
+function lightning(ctx, x1, y1, x2, y2, depth, branch) {
+  if (depth === 0) return;
+  const mx = (x1+x2)/2 + (Math.random()-0.5) * Math.abs(x2-x1) * 0.7;
+  const my = (y1+y2)/2 + (Math.random()-0.5) * Math.abs(y2-y1) * 0.5;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(mx,my); ctx.lineTo(x2,y2);
+  ctx.strokeStyle = `rgba(255,255,255,${0.07 + depth*0.09})`;
+  ctx.lineWidth   = depth * 0.6;
+  ctx.shadowColor = '#fff'; ctx.shadowBlur = 10;
+  ctx.stroke();
+  if (branch && depth > 2 && Math.random() < 0.45) {
+    const bx = mx + (Math.random()-0.5)*180;
+    const by = my + Math.random()*120 + 40;
+    lightning(ctx, mx, my, bx, by, depth-2, false);
+  }
+  lightning(ctx, x1, y1, mx, my, depth-1, false);
+  lightning(ctx, mx, my, x2, y2, depth-1, false);
+}
+
+const flash = document.getElementById('flash');
+let lastStrike = 0, nextStrike = 2000 + Math.random()*3000;
+
+function doStrike(ts) {
+  const x1 = Math.random()*W, y1 = 0;
+  const x2 = x1 + (Math.random()-0.5)*500;
+  const y2 = Math.random()*H*0.65 + 80;
+  bgX.save(); bgX.globalAlpha = 0.95;
+  bgX.fillStyle = 'rgba(255,255,255,0.03)'; bgX.fillRect(0,0,W,H);
+  for (let i=0; i<4; i++) lightning(bgX, x1, y1, x2, y2, 7, true);
+  bgX.restore();
+  // screen flash
+  flash.style.opacity = '0.06';
+  setTimeout(() => { flash.style.opacity = '0'; }, 60);
+  // body shake
+  document.body.style.transform = `translate(${(Math.random()-0.5)*4}px,${(Math.random()-0.5)*4}px)`;
+  setTimeout(() => { document.body.style.transform = ''; }, 80);
+  lastStrike = ts;
+  nextStrike = 1800 + Math.random()*4500;
+}
+
+// ══════════════════════════════════════════
+//  PARTICLES
+// ══════════════════════════════════════════
+const particles = Array.from({length:70}, () => ({
+  x:  Math.random()*1440, y: Math.random()*900,
+  vx: (Math.random()-0.5)*0.25, vy: (Math.random()-0.5)*0.25,
+  r:  Math.random()*1.2+0.2, a: Math.random()
+}));
+
+// ══════════════════════════════════════════
+//  ARC BETWEEN CABLE NODES
+// ══════════════════════════════════════════
+const nodePositions = [
+  { x: 260/1440, y: 95/220 },
+  { x: 760/1440, y: 110/220 },
+  { x: 1020/1440, y: 100/220 },
+];
+let arcT = 0;
+
+function drawArc() {
+  arcX.clearRect(0,0,W,H);
+  if (Math.random() < 0.4) {
+    const a = nodePositions[Math.floor(Math.random()*nodePositions.length)];
+    const b = nodePositions[Math.floor(Math.random()*nodePositions.length)];
+    if (a !== b) {
+      arcX.save(); arcX.globalAlpha = 0.5 + Math.random()*0.4;
+      lightning(arcX,
+        a.x*W, a.y*220*(H/window.innerHeight),
+        b.x*W, b.y*220*(H/window.innerHeight),
+        4, false
+      );
+      arcX.restore();
+    }
+  }
+}
+
+// ══════════════════════════════════════════
+//  MAIN LOOP
+// ══════════════════════════════════════════
+function loop(ts) {
+  // bg clear with trail
+  bgX.fillStyle = 'rgba(6,6,6,0.25)';
+  bgX.fillRect(0,0,W,H);
+  // particles
+  particles.forEach(p => {
+    p.x+=p.vx; p.y+=p.vy;
+    p.a += (Math.random()-0.5)*0.04;
+    p.a  = Math.max(0.05, Math.min(0.9, p.a));
+    if (p.x<0) p.x=W; if (p.x>W) p.x=0;
+    if (p.y<0) p.y=H; if (p.y>H) p.y=0;
+    bgX.beginPath(); bgX.arc(p.x,p.y,p.r,0,Math.PI*2);
+    bgX.fillStyle='#fff'; bgX.globalAlpha=p.a*0.35;
+    bgX.shadowColor='#fff'; bgX.shadowBlur=5;
+    bgX.fill(); bgX.globalAlpha=1; bgX.shadowBlur=0;
+  });
+  // strike
+  if (ts - lastStrike > nextStrike) doStrike(ts);
+  // arc
+  drawArc();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// ══════════════════════════════════════════
+//  CABLES SWAY
+// ══════════════════════════════════════════
+const cPaths = document.querySelectorAll('svg path[id^="c"]');
+const origDs = [...cPaths].map(p => p.getAttribute('d'));
+let swayT = 0;
+function sway() {
+  swayT += 0.012;
+  cPaths.forEach((path, i) => {
+    let d = origDs[i];
+    d = d.replace(/Q ([\d.-]+),([\d.-]+) /g, (m,qx,qy) => {
+      const s = Math.sin(swayT + i*0.9) * 10;
+      return `Q ${qx},${(parseFloat(qy)+s).toFixed(1)} `;
+    });
+    path.setAttribute('d', d);
+  });
+  requestAnimationFrame(sway);
+}
+sway();
+
+// ══════════════════════════════════════════
+//  NODE FLICKER
+// ══════════════════════════════════════════
+const nodes = document.querySelectorAll('svg circle[id^="node"]');
+function flickerNode() {
+  const n = nodes[Math.floor(Math.random()*nodes.length)];
+  const orig = n.getAttribute('r');
+  n.setAttribute('r','14'); n.setAttribute('opacity','1');
+  setTimeout(() => { n.setAttribute('r',orig); n.setAttribute('opacity','0.85'); }, 60+Math.random()*100);
+}
+setInterval(flickerNode, 500 + Math.random()*600);
+
+// ══════════════════════════════════════════
+//  SPARKS on mousemove
+// ══════════════════════════════════════════
+let lastSpark = 0;
+document.addEventListener('mousemove', e => {
+  const now = Date.now();
+  if (now - lastSpark < 50) return;
+  lastSpark = now;
+  const count = Math.random() < 0.3 ? 6 : 3;
+  for (let i=0; i<count; i++) {
+    const s = document.createElement('div');
+    s.className = 'spark';
+    const angle = Math.random()*Math.PI*2;
+    const dist  = 15 + Math.random()*50;
+    s.style.cssText = `
+      left:${e.clientX}px; top:${e.clientY}px;
+      width:${2+Math.random()*4}px; height:${1+Math.random()*3}px;
+      border-radius:${Math.random()<0.5?'50%':'2px'};
+      --tx:${Math.cos(angle)*dist}px; --ty:${Math.sin(angle)*dist}px;
+    `;
+    document.body.appendChild(s);
+    setTimeout(() => s.remove(), 700);
+  }
+});
+
+// ══════════════════════════════════════════
+//  3D TILT on service cards
+// ══════════════════════════════════════════
+document.querySelectorAll('.service-card').forEach(card => {
+  card.addEventListener('mousemove', e => {
+    const r = card.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width  - 0.5;
+    const y = (e.clientY - r.top)  / r.height - 0.5;
+    card.style.transform = `perspective(600px) rotateY(${x*12}deg) rotateX(${-y*12}deg) translateY(-4px)`;
+  });
+  card.addEventListener('mouseleave', () => {
+    card.style.transform = '';
+  });
+});
+
+// ══════════════════════════════════════════
+//  SCROLL FADE IN + card stagger
+// ══════════════════════════════════════════
+const ioFade = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); ioFade.unobserve(e.target); } });
+}, { threshold: 0.15 });
+
+document.querySelectorAll('.fade-in').forEach(el => ioFade.observe(el));
+
+// staggered card entrance
+const ioCards = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      const cards = document.querySelectorAll('.service-card');
+      cards.forEach((c, i) => {
+        setTimeout(() => c.classList.add('visible'), i * 100);
+      });
+      ioCards.disconnect();
+    }
+  });
+}, { threshold: 0.1 });
+ioCards.observe(document.querySelector('.services-grid'));
+
+// ══════════════════════════════════════════
+//  COUNTER ANIMATION
+// ══════════════════════════════════════════
+function animateCounters() {
+  document.querySelectorAll('.stat-num[data-target]').forEach(el => {
+    const target = parseInt(el.dataset.target);
+    const start  = performance.now();
+    const dur    = 1600;
+    function upd(now) {
+      const p = Math.min(1, (now-start)/dur);
+      const eased = 1 - Math.pow(1-p, 3);
+      el.textContent = Math.floor(eased * target);
+      if (p < 1) requestAnimationFrame(upd);
+      else el.textContent = target + (target===60 ? '' : '+');
+    }
+    requestAnimationFrame(upd);
+  });
+}
+const ioCounter = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) { animateCounters(); ioCounter.disconnect(); } });
+}, { threshold: 0.3 });
+ioCounter.observe(document.querySelector('.stats-row'));
+
+// ══════════════════════════════════════════
+//  H1 GLITCH
+// ══════════════════════════════════════════
+const h1 = document.querySelector('h1');
+setInterval(() => {
+  if (Math.random() < 0.25) {
+    h1.style.transform = `skewX(${(Math.random()-0.5)*5}deg) translateX(${(Math.random()-0.5)*8}px)`;
+    setTimeout(() => h1.style.transform = '', 60 + Math.random()*60);
+  }
+}, 2500);
+
+// ══════════════════════════════════════════
+//  PERIODIC POWER SURGE
+// ══════════════════════════════════════════
+setInterval(() => {
+  flash.style.opacity = '0.12';
+  setTimeout(() => { flash.style.opacity = '0.04'; }, 40);
+  setTimeout(() => { flash.style.opacity = '0.08'; }, 80);
+  setTimeout(() => { flash.style.opacity = '0'; }, 120);
+}, 8000 + Math.random()*5000);
+</script>
+</body>
+</html>
