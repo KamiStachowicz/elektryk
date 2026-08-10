@@ -16,10 +16,24 @@ Nie laczy sie jeszcze z BMC. Najpierw sprawdzamy, czy dobrze klasyfikuje.
 """
 
 import re
+import os
+import json
 
 # =============================================================
 #  KONFIGURACJA - to sie edytuje, gdy dochodzi nowy system
 # =============================================================
+
+# Zespol do rotacji (BEZ Ciebie/Kamila - Ty nie wchodzisz do kolejki).
+# Wpisz loginy/imiona jak beda. Kolejnosc = kolejnosc przydzielania.
+ZESPOL = [
+    # "osoba1",
+    # "osoba2",
+    # "osoba3",
+]
+
+# Plik, w ktorym bot pamieta, kto byl ostatni (zeby "po kolei" dzialalo
+# miedzy uruchomieniami). Lezy obok skryptu.
+PLIK_STANU = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rotacja_stan.json")
 
 # Systemy dopasowywane DOKLADNIE (1:1)
 NASZE_SYSTEMY = {
@@ -64,6 +78,36 @@ def czy_nasz(system: str) -> bool:
     return False
 
 
+def nastepna_osoba() -> str:
+    """Zwraca kolejna osobe z rotacji i zapisuje stan do pliku.
+
+    Dziala po kolei miedzy uruchomieniami - pamieta ostatni indeks.
+    Jak lista ZESPOL jest pusta, zwraca placeholder.
+    """
+    if not ZESPOL:
+        return "(uzupelnij liste ZESPOL)"
+
+    # wczytaj ostatni indeks
+    idx = 0
+    if os.path.exists(PLIK_STANU):
+        try:
+            with open(PLIK_STANU, "r", encoding="utf-8") as f:
+                idx = json.load(f).get("nastepny", 0)
+        except (json.JSONDecodeError, OSError):
+            idx = 0
+
+    osoba = ZESPOL[idx % len(ZESPOL)]
+
+    # zapisz nastepny indeks
+    try:
+        with open(PLIK_STANU, "w", encoding="utf-8") as f:
+            json.dump({"nastepny": (idx + 1) % len(ZESPOL)}, f)
+    except OSError:
+        pass
+
+    return osoba
+
+
 def zdecyduj(opis: str) -> dict:
     """Zwraca decyzje routingu dla danego opisu ticketu."""
     system = wyluskaj_system(opis)
@@ -72,19 +116,23 @@ def zdecyduj(opis: str) -> dict:
         return {
             "system": None,
             "decyzja": "DO_SPRAWDZENIA",
+            "przypisany": None,
             "powod": "Brak pola '#Application name:' w opisie",
         }
 
     if czy_nasz(system):
+        osoba = nastepna_osoba()
         return {
             "system": system,
             "decyzja": "NASZE",
-            "powod": "System na naszej liscie / pasuje do wzorca -> przypisac do zespolu",
+            "przypisany": osoba,
+            "powod": f"System nasz -> przypisano do: {osoba}",
         }
 
     return {
         "system": system,
         "decyzja": "GSD",
+        "przypisany": None,
         "powod": "System spoza naszej listy -> Global Service Desk",
     }
 
@@ -107,7 +155,17 @@ if __name__ == "__main__":
     for etykieta, opis in przyklady:
         wynik = zdecyduj(opis)
         print(f"[{etykieta}]")
-        print(f"   system : {wynik['system']}")
-        print(f"   decyzja: {wynik['decyzja']}")
-        print(f"   powod  : {wynik['powod']}")
+        print(f"   system    : {wynik['system']}")
+        print(f"   decyzja   : {wynik['decyzja']}")
+        print(f"   przypisany: {wynik['przypisany']}")
+        print(f"   powod     : {wynik['powod']}")
         print("-" * 60)
+
+    # --- Demo rotacji (na przykladowej liscie, zeby pokazac 'po kolei') ---
+    print("\nDEMO ROTACJI (przykladowa lista 3 osob):")
+    ZESPOL[:] = ["anna", "bartek", "cezary"]
+    if os.path.exists(PLIK_STANU):
+        os.remove(PLIK_STANU)  # zeruj stan na potrzeby demo
+    for n in range(1, 8):
+        print(f"   ticket {n} -> {nastepna_osoba()}")
+    os.remove(PLIK_STANU)  # sprzatanie po demie
