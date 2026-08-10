@@ -57,14 +57,24 @@ WZORCE = [
 # =============================================================
 
 def wyluskaj_system(opis: str):
-    """Zwraca nazwe systemu z linii '#Application name:' albo None."""
-    m = re.search(r"#Application\s*name:\s*([^\r\n]+)", opis, re.IGNORECASE)
+    """Zwraca SID systemu z linii '#Application Name::...' albo None.
+
+    Radzi sobie z realnym formatem BMC, np:
+        #Application Name::P50 - Europe Regional ERP System
+    - pojedynczy LUB podwojny dwukropek (:  albo ::)
+    - z SID-a bierze sam kod (P50), pomijajac ' - opis'
+    """
+    m = re.search(
+        r"#Application\s*Name\s*:+\s*([^\r\n]+)",
+        opis,
+        re.IGNORECASE,
+    )
     if not m:
         return None
-    # bierzemy pierwszy "token" - system to zwykle jeden wyraz (SID)
     wartosc = m.group(1).strip()
-    token = wartosc.split()[0] if wartosc else ""
-    return token or None
+    # SID = pierwszy ciag liter/cyfr (P50, BWP...), bez ' - Europe...'
+    m2 = re.match(r"[A-Za-z0-9]+", wartosc)
+    return m2.group(0) if m2 else None
 
 
 def czy_nasz(system: str) -> bool:
