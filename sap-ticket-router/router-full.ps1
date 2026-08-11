@@ -7,35 +7,35 @@
 #  NIC nie zapisuje samo.
 # ============================================================
 
-# ---------------- MAPA ROUTINGU (ZWERYFIKUJ!) ----------------
-# system (SID) -> zespol. Zrobione z Twojej tabeli "kto co robi".
-# UWAGA: niektore zalezą od typu zadania - popraw wg potrzeb.
-$RoutingTeams = @{
-  'BKP' = 'BACKEND-SAP-BASIS'
-  'BEP' = 'ENGINEERING-WEB-APPL'
-  'BWP' = 'ENTERPRISE-REPORTING'
-  'BGP' = 'ENTERPRISE-REPORTING'
-  'B4P' = 'ENTERPRISE-REPORTING'
-  'P50' = 'APPL-INTEGRATION-SAP-CROSS-APPL'
-  'P4M' = 'GLOBAL-SERVICEDESK'
-  'K4M' = 'GLOBAL-SERVICEDESK'
-  'Q4M' = 'GLOBAL-SERVICEDESK'
-  'IAP' = 'GLOBAL-SERVICEDESK'
-  'PFI' = 'IDENTITY-TOOLS'
-  'SM1' = 'IDENTITY-TOOLS'
-  'PHE' = 'WORKFORCE-HCM-OPERATIONS'
-  'PHR' = 'WORKFORCE-HCM-OPERATIONS'
-  'HRP' = 'WORKFORCE-HCM-OPERATIONS'
-  'SF'  = 'WORKFORCE-HCM-OPERATIONS'
-  'ESS' = 'WORKFORCE-HCM-OPERATIONS'
-  'PPH' = 'SUPPLY-CHAIN-OPERATIONS'
-  'DPH' = 'SUPPLY-CHAIN-OPERATIONS'
-  'QPH' = 'SUPPLY-CHAIN-OPERATIONS'
-  'KPH' = 'SUPPLY-CHAIN-OPERATIONS'
-  'SAC' = 'ENTERPRISE-REPORTING'
-}
-$GSD_TEAM = 'GLOBAL-SERVICEDESK'   # dla shopfloor
-# ------------------------------------------------------------
+# ---------------- REGULY ROUTINGU (typ zadania + system -> zespol) ----------------
+# Sprawdzane PO KOLEI, pierwsza pasujaca wygrywa. ZWERYFIKUJ oznaczone # ?
+$ZnaneSystemy = @('BKP','BEP','BWP','BGP','B4P','P50','P4M','K4M','Q4M','IAP','PFI','SM1','PHE','PHR','HRP','SF','ESS','PPH','DPH','QPH','KPH','SAC','MAQ-IS','MAQ','PGR','PGT')
+
+# @{ N=nazwa; T=regex-tresci (lub $null); S=@(systemy wymagane)(lub $null); X=@(systemy wykluczone)(lub $null); Team=zespol }
+$Reguly = @(
+  @{ N='RF profile';      T='rf profile|zebra';                                        S=$null; X=$null;      Team='SHOPFLOOR-WAREHOUSE+INTRALOG' }
+  @{ N='Folder';          T='folder access|delete folder|folder';                      S=$null; X=$null;      Team='TOOLS-ORCHESTRATION' }
+  @{ N='Fiori';           T='fiori';                                                   S=$null; X=$null;      Team='APPL-INTEGRATION-SAP-CROSS-APPL' }
+  @{ N='GRC problem';     T='\bgrc\b|cannot find roles|nie widac rol';                 S=$null; X=$null;      Team='APPL-INTEGRATION-SAP-CROSS-APPL' }
+  @{ N='Omada';           T='omada';                                                   S=$null; X=$null;      Team='IDENTITY-TOOLS' }
+  @{ N='Shopfloor';       T='shopfloor';                                               S=$null; X=$null;      Team='GLOBAL-SERVICEDESK' }
+  @{ N='AD group';        T='ad group|add user to ad|dest-lg-ro';                       S=$null; X=$null;      Team='GLOBAL-SERVICEDESK' }
+  @{ N='Lock/Unlock';     T='locking|unlock|password reset|extend validity|lock account'; S=$null; X=$null;   Team='GLOBAL-SERVICEDESK' }
+  @{ N='Approver !P50';   T='approver';                                                S=$null; X=@('P50');   Team='APPL-INTEGRATION-SAP-CROSS-APPL' }  # ? approver P50 -> gdzie
+  @{ N='AcctCreate GSD';  T='account creation|create account|new account|new user|zalozenie konta|utworzenie konta|konto'; S=@('PHE','ESS','BWP','BGP','B4P','P50','P4M','K4M','Q4M','IAP'); X=$null; Team='GLOBAL-SERVICEDESK' }
+  @{ N='AcctCreate IDT';  T='account creation|create account|zalozenie konta|konto';   S=@('SM1','PFI'); X=$null; Team='IDENTITY-TOOLS' }
+  @{ N='Removing P50';    T='removing roles|remove role|usuniecie roli|usun';          S=@('P50'); X=$null;   Team='GLOBAL-SERVICEDESK' }
+  @{ N='Role assign SM1'; T='role assignment|assign.*role|transactions to roles';      S=@('SM1'); X=$null;   Team='APPL-INTEGRATION-SAP-CROSS-APPL' }
+  @{ N='P50 issues';      T='issue|error|not working|problem|cannot|blad|nie dziala';  S=@('P50'); X=$null;   Team='APPL-INTEGRATION-SAP-CROSS-APPL' }
+  @{ N='BKP';             T=$null; S=@('BKP'); X=$null;                                 Team='BACKEND-SAP-BASIS' }
+  @{ N='BEP';             T=$null; S=@('BEP'); X=$null;                                 Team='ENGINEERING-WEB-APPL' }
+  @{ N='Reporting';       T=$null; S=@('BWP','BGP','B4P','SAC','MAQ-IS','MAQ'); X=$null; Team='ENTERPRISE-REPORTING' }
+  @{ N='HCM';             T=$null; S=@('PHE','PHR','HRP','SF','ESS'); X=$null;          Team='WORKFORCE-HCM-OPERATIONS' }
+  @{ N='SupplyChain';     T=$null; S=@('PPH','DPH','QPH','KPH'); X=$null;               Team='SUPPLY-CHAIN-OPERATIONS' }
+  @{ N='Identity';        T=$null; S=@('SM1','PFI'); X=$null;                           Team='IDENTITY-TOOLS' }
+  @{ N='P50 fallback';    T=$null; S=@('P50'); X=$null;                                 Team='APPL-INTEGRATION-SAP-CROSS-APPL' }  # ?
+)
+# ----------------------------------------------------------------------------------
 
 $OBECNA         = "TOOLS-ACCESS-MANAGEMENT"   # obecna grupa (do namierzenia pola)
 $PlikLogu       = "$env:USERPROFILE\Documents\sap_router_log.csv"
@@ -61,17 +61,26 @@ $WALK=[System.Windows.Automation.TreeWalker]::ControlViewWalker
 function ToAscii($s){ if(-not $s){return ''}; $n=$s.Normalize([Text.NormalizationForm]::FormD); -join($n.ToCharArray()|Where-Object{[Globalization.CharUnicodeInfo]::GetUnicodeCategory($_) -ne 'NonSpacingMark'}) }
 function Get-Val($e){ try{ $vp=$e.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern); return $vp.Current.Value }catch{ return $null } }
 
+function Wykryj-Systemy($txt){ $up=$txt.ToUpper(); $found=@(); foreach($s in $ZnaneSystemy){ if($up -match ('\b'+[regex]::Escape($s)+'\b')){ $found+=$s } }; return $found }
+function Zespol-Dla($txt){
+  $low=$txt.ToLower(); $sys=@(Wykryj-Systemy $txt)
+  foreach($r in $Reguly){
+    if($r.T -and ($low -notmatch $r.T)){ continue }
+    if($r.S -and -not (@($sys | Where-Object { $r.S -contains $_ }).Count)){ continue }
+    if($r.X -and (@($sys | Where-Object { $r.X -contains $_ }).Count)){ continue }
+    return [pscustomobject]@{ Team=$r.Team; Regula=$r.N; Sys=$sys }
+  }
+  return [pscustomobject]@{ Team=''; Regula=''; Sys=$sys }
+}
+
 function Przetworz($txt){
- $system=$null; foreach($e in $Etykiety){ if($txt -match $e){ $system=$Matches[1].ToUpper(); break } }
- if(-not $system){ foreach($m in [regex]::Matches($txt,'\b[A-Za-z0-9]{3}\b')){ $k=$m.Value.ToUpper(); if($RoutingTeams.ContainsKey($k)){ $system=$k; break } } }
- # ustal zespol
- $team=''
- if($txt -match 'shopfloor'){ $team=$GSD_TEAM; if(-not $system){ $system='SHOPFLOOR' } }
- elseif($system -and $RoutingTeams.ContainsKey($system)){ $team=$RoutingTeams[$system] }
+ $zd=Zespol-Dla $txt
+ $team=$zd.Team; $system=($zd.Sys -join ',')
+ if(-not $system){ foreach($e in $Etykiety){ if($txt -match $e){ $system=$Matches[1].ToUpper(); break } } }
  $role=@(); foreach($m in [regex]::Matches($txt,'\bZ[A-Z0-9]+-[A-Z0-9_]+\b','IgnoreCase')){ $r=$m.Value.ToUpper(); if($role -notcontains $r){$role+=$r} }
  $userName=''; if($txt -match '#User\s*Full\s*Name\s*:+\s*([^\r\n]+)'){ $userName=$Matches[1].Trim() }
  $userId=''; if($txt -match '\b[EM]\d{7}\b'){ $userId=$Matches[0] }
- return [pscustomobject]@{ System=$system; Team=$team; Role=$role; UserName=$userName; UserId=$userId } }
+ return [pscustomobject]@{ System=$system; Team=$team; Regula=$zd.Regula; Role=$role; UserName=$userName; UserId=$userId } }
 
 function Get-EdgeWindow{ foreach($w in $AE::RootElement.FindAll($TS::Children,$TRUE1)){ if($w.Current.Name -match 'Edge'){ return $w } }; return $null }
 function Get-ViewDetails($win){ $l=@(); foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $nm=(ToAscii $e.Current.Name).ToLower(); if( ($nm -match 'wyswietl' -and $nm -match 'szczeg') -or ($nm -match 'view' -and $nm -match 'detail') ){ $l+=$e } }; return $l }
@@ -130,7 +139,7 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
 
   $win=Get-EdgeWindow; $txt=Kopiuj-Strone $win; $w=Przetworz $txt
   if($w.Team){
-    Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  -> "+$w.Team) -ForegroundColor Green
+    Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  -> "+$w.Team+"  ["+$w.Regula+"]") -ForegroundColor Green
     if($w.Role.Count -gt 0){ Write-Host ("   ROLE: "+($w.Role -join ', ')) }
     Write-Host ("   AKCJA: przypisz do "+$w.Team+" (nie zapisuje)") -ForegroundColor Yellow
     $win=Get-EdgeWindow
@@ -140,7 +149,7 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  DO_SPRAWDZENIA") -ForegroundColor Red
     $doReki += ("#"+$nr+" "+$tkey+" system="+$w.System+" user="+$w.UserName)
   }
-  $wyniki += [pscustomobject]@{ Czas=(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'); Ticket=$tkey; System=$w.System; Team=$w.Team; User=$w.UserName; UserId=$w.UserId; Role=($w.Role -join ';') }
+  $wyniki += [pscustomobject]@{ Czas=(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'); Ticket=$tkey; System=$w.System; Team=$w.Team; Regula=$w.Regula; User=$w.UserName; UserId=$w.UserId; Role=($w.Role -join ';') }
 
   $win=Get-EdgeWindow; Wstecz $win; Start-Sleep -Milliseconds $CzasListy
 }
