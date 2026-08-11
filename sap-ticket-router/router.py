@@ -121,6 +121,22 @@ def czy_nasz(system: str) -> bool:
     return False
 
 
+def systemy_w_tekscie(tekst: str) -> list:
+    """Szuka NASZYCH systemow w dowolnym tekscie (np. w tytule/Podsumowaniu).
+
+    Bierze tylko 3-znakowe "slowa" (SID-y jak P4M, Q4M, BWP) i sprawdza,
+    czy sa nasze. Granice slowa chronia przed falszywym trafieniem w srodku wyrazu.
+    Zwraca liste unikalnych naszych SID-ow w kolejnosci wystapienia.
+    """
+    kandydaci = re.findall(r"\b[A-Za-z0-9]{3}\b", tekst)
+    wynik = []
+    for k in kandydaci:
+        ku = k.upper()
+        if czy_nasz(ku) and ku not in wynik:
+            wynik.append(ku)
+    return wynik
+
+
 def nastepna_osoba() -> str:
     """Zwraca kolejna osobe z rotacji i zapisuje stan do pliku.
 
@@ -151,16 +167,28 @@ def nastepna_osoba() -> str:
     return osoba
 
 
-def zdecyduj(opis: str) -> dict:
-    """Zwraca decyzje routingu dla danego opisu ticketu."""
+def zdecyduj(opis: str, tytul: str = "") -> dict:
+    """Zwraca decyzje routingu dla ticketu.
+
+    Priorytet 1: pole '#Application Name' z opisu.
+    Priorytet 2: jesli w opisie nie ma pola - szukaj naszego systemu w tytule.
+    """
     system = wyluskaj_system(opis)
+    zrodlo = "opis (#Application Name)"
+
+    # fallback: sprobuj z tytulu/Podsumowania
+    if system is None and tytul:
+        znalezione = systemy_w_tekscie(tytul)
+        if znalezione:
+            system = znalezione[0]
+            zrodlo = "tytul (Podsumowanie)"
 
     if system is None:
         return {
             "system": None,
             "decyzja": "DO_SPRAWDZENIA",
             "przypisany": None,
-            "powod": "Brak pola '#Application name:' w opisie",
+            "powod": "Brak '#Application Name' w opisie i brak naszego systemu w tytule",
         }
 
     if czy_nasz(system):
@@ -169,14 +197,14 @@ def zdecyduj(opis: str) -> dict:
             "system": system,
             "decyzja": "NASZE",
             "przypisany": osoba,
-            "powod": f"System nasz -> przypisano do: {osoba}",
+            "powod": f"System nasz (zrodlo: {zrodlo}) -> przypisano do: {osoba}",
         }
 
     return {
         "system": system,
         "decyzja": "GSD",
         "przypisany": None,
-        "powod": "System spoza naszej listy -> Global Service Desk",
+        "powod": f"System spoza naszej listy (zrodlo: {zrodlo}) -> Global Service Desk",
     }
 
 
