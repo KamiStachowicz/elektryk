@@ -56,25 +56,31 @@ WZORCE = [
 #  LOGIKA
 # =============================================================
 
-def wyluskaj_system(opis: str):
-    """Zwraca SID systemu z linii '#Application Name::...' albo None.
+# Etykiety, po ktorych moze byc podany system (probowane po kolei).
+# Jak znajdziesz kolejny format w ticketach - dopisz tutaj wzorzec.
+ETYKIETY_SYSTEMU = [
+    r"#Application\s*Name\s*:+\s*([^\r\n]+)",  # #Application Name::P50 - Europe...
+    r"\bSystem\s*:+\s*([^\r\n]+)",             # System:P50  /  System: P50
+]
 
-    Radzi sobie z realnym formatem BMC, np:
+
+def wyluskaj_system(opis: str):
+    """Zwraca SID systemu z opisu albo None.
+
+    Probuje po kolei znanych etykiet (patrz ETYKIETY_SYSTEMU), np:
         #Application Name::P50 - Europe Regional ERP System
-    - pojedynczy LUB podwojny dwukropek (:  albo ::)
-    - z SID-a bierze sam kod (P50), pomijajac ' - opis'
+        System:P50
+    Z wartosci bierze sam kod (P50), pomijajac ' - opis'.
     """
-    m = re.search(
-        r"#Application\s*Name\s*:+\s*([^\r\n]+)",
-        opis,
-        re.IGNORECASE,
-    )
-    if not m:
-        return None
-    wartosc = m.group(1).strip()
-    # SID = pierwszy ciag liter/cyfr (P50, BWP...), bez ' - Europe...'
-    m2 = re.match(r"[A-Za-z0-9]+", wartosc)
-    return m2.group(0) if m2 else None
+    for wzor in ETYKIETY_SYSTEMU:
+        m = re.search(wzor, opis, re.IGNORECASE)
+        if not m:
+            continue
+        wartosc = m.group(1).strip()
+        m2 = re.match(r"[A-Za-z0-9]+", wartosc)
+        if m2:
+            return m2.group(0)
+    return None
 
 
 def wyluskaj_role(opis: str) -> list:
