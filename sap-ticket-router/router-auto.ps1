@@ -83,6 +83,7 @@ Start-Sleep -Seconds 5
 
 $licz=@{ NASZE=0; GSD=0; DO_SPRAWDZENIA=0 }
 $doReki=@()
+$seen=@{}      # dedup: tresc juz przetworzonych ticketow
 
 for($i=0; $i -lt $ile; $i++){
   $win=Get-EdgeWindow
@@ -104,6 +105,12 @@ for($i=0; $i -lt $ile; $i++){
 
   $win=Get-EdgeWindow
   $txt=Kopiuj-Strone $win
+  $klucz=($txt -replace '\s+',' ').Trim()
+  if($klucz -and $seen.ContainsKey($klucz)){
+    Write-Host ("   (duplikat - juz przetworzony, pomijam)") -ForegroundColor DarkGray
+    Wstecz $win; Start-Sleep -Milliseconds $CzasListy; continue
+  }
+  if($klucz){ $seen[$klucz]=1 }
   $w=Przetworz $txt
   $kol=switch($w.Decyzja){ 'NASZE'{'Green'} 'GSD'{'Yellow'} default{'Red'} }
   $osoba=if($w.Decyzja -eq 'NASZE'){ Nastepna-Osoba } else { '' }
