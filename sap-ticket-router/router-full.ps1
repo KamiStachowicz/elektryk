@@ -56,7 +56,7 @@ $PlikRotacji = "$env:USERPROFILE\sap_router_rotacja.txt"
 $MaxTicketow    = 50
 $CzasLadowania  = 2500
 $CzasListy      = 1800
-$Etykiety = @('#Application\s*Name\s*:+\s*([A-Za-z0-9]+)','\bSystem\s*:+\s*([A-Za-z0-9]+)')
+$Etykiety = @('#Application\s*Name\s*:+\s*([A-Za-z0-9]+)','SAP\s*ERP\s*System\s*:+\s*([A-Za-z0-9]+)','\bSystem\s*:+\s*([A-Za-z0-9]+)')
 
 Add-Type -AssemblyName UIAutomationClient; Add-Type -AssemblyName UIAutomationTypes; Add-Type -AssemblyName System.Windows.Forms
 Add-Type @"
@@ -79,7 +79,7 @@ function Get-Val($e){ try{ $vp=$e.GetCurrentPattern([System.Windows.Automation.V
 function Czy-Nasz($s){ if(-not $s){return $false}; $s=$s.ToUpper(); if($NaszeWyjatki -contains $s){ return $false }; if($NaszeExact -contains $s){ return $true }; foreach($w in $NaszeWzorce){ if($s -match $w){ return $true } }; return $false }
 function NaszSystem($txt){
   # wildcardy (BxP, xEW...) TYLKO z pola Application Name (pewne)
-  if($txt -match '#Application\s*Name\s*:+\s*([A-Za-z0-9]{2,4})'){ $s=$Matches[1].ToUpper(); if(Czy-Nasz $s){ return $s } }
+  if($txt -match '(?:#Application\s*Name|SAP\s*ERP\s*System)\s*:+\s*([A-Za-z0-9]{2,4})'){ $s=$Matches[1].ToUpper(); if(Czy-Nasz $s){ return $s } }
   # luzny skan tekstu tylko dla DOKLADNYCH nazw (zeby nie zlapac np. NEW)
   foreach($m in [regex]::Matches($txt,'\b[A-Za-z0-9]{3}\b')){ $s=$m.Value.ToUpper(); if($NaszeExact -contains $s){ return $s } }
   return $null
@@ -113,8 +113,10 @@ function Przetworz($txt){
    $zd=Zespol-Dla $txt; $team=$zd.Team; $system=($zd.Sys -join ','); $regula=$zd.Regula; $czyNasz=$false
    if(-not $system){ foreach($e in $Etykiety){ if($txt -match $e){ $system=$Matches[1].ToUpper(); break } } }
  }
- $role=@(); foreach($m in [regex]::Matches($txt,'\bZ[A-Z0-9]+-[A-Z0-9_]+\b','IgnoreCase')){ $r=$m.Value.ToUpper(); if($role -notcontains $r){$role+=$r} }
- $userName=''; if($txt -match '#User\s*Full\s*Name\s*:+\s*([^\r\n]+)'){ $userName=$Matches[1].Trim() }
+ $role=@()
+ foreach($m in [regex]::Matches($txt,'\bZ[A-Z0-9]+-[A-Z0-9_]+\b','IgnoreCase')){ $r=$m.Value.ToUpper(); if($role -notcontains $r){$role+=$r} }
+ foreach($m in [regex]::Matches($txt,'Business\s*Role\s*:+\s*([^\r\n]+)','IgnoreCase')){ $v=$m.Groups[1].Value.Trim(); if($v -and ($role -notcontains $v)){ $role+=$v } }
+ $userName=''; if($txt -match '(?:#User\s*Full\s*Name|Full\s*Name)\s*:+\s*([^\r\n]+)'){ $userName=$Matches[1].Trim() }
  $userId=''; if($txt -match '\b[EM]\d{7}\b'){ $userId=$Matches[0] }
  return [pscustomobject]@{ System=$system; Team=$team; Nasz=$czyNasz; Regula=$regula; Role=$role; UserName=$userName; UserId=$userId } }
 
