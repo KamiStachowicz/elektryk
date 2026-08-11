@@ -1,11 +1,10 @@
 # ============================================================
 #  AKCJA: podmien "Assignee support group" na GLOBAL-SERVICEDESK
-#  Znajduje pole po jego OBECNEJ wartosci (TOOLS-ACCESS-MANAGEMENT).
+#  1) klika EDIT  2) znajduje pole po obecnej wartosci  3) wpisuje GSD
 #  NIE ZAPISUJE - zatrzymuje sie, Ty klikasz Save.
-#  Zaloz, ze ticket jest w trybie EDIT (pole pokazuje grupe).
 # ============================================================
-$OBECNA = "TOOLS-ACCESS-MANAGEMENT"   # czego szukamy w polu
-$GRUPA  = "GLOBAL-SERVICEDESK"        # co wpisujemy
+$OBECNA = "TOOLS-ACCESS-MANAGEMENT"
+$GRUPA  = "GLOBAL-SERVICEDESK"
 
 Add-Type -AssemblyName UIAutomationClient; Add-Type -AssemblyName UIAutomationTypes; Add-Type -AssemblyName System.Windows.Forms
 Add-Type @"
@@ -21,41 +20,32 @@ $AE=[System.Windows.Automation.AutomationElement]; $TS=[System.Windows.Automatio
 function ToAscii($s){ if(-not $s){return ''}; $n=$s.Normalize([Text.NormalizationForm]::FormD); -join($n.ToCharArray()|Where-Object{[Globalization.CharUnicodeInfo]::GetUnicodeCategory($_) -ne 'NonSpacingMark'}) }
 function Get-Val($e){ try{ $vp=$e.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern); return $vp.Current.Value }catch{ return $null } }
 function Get-EdgeWindow{ foreach($w in $AE::RootElement.FindAll($TS::Children,$TRUE1)){ if($w.Current.Name -match 'Edge'){ return $w } }; return $null }
+function Find-El($win,[string[]]$musi){ foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $nm=(ToAscii $e.Current.Name).ToLower(); if(-not $nm){continue}; $ok=$true; foreach($m in $musi){ if($nm -notmatch $m){ $ok=$false; break } }; if($ok){ return $e } }; return $null }
+function Klik-El($el){ $r=$el.Current.BoundingRectangle; if($r.Width -le 0){ return $false }; [Win]::Click([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2)); return $true }
 
 $win=Get-EdgeWindow; if(-not $win){ Write-Host "Nie znalazlem Edge." -ForegroundColor Red; return }
-[Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle)|Out-Null; Start-Sleep -Milliseconds 300
+[Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle)|Out-Null; Start-Sleep -Milliseconds 400
 
-$szukaj = $OBECNA.ToLower()
-$target=$null
+# 1) KLIK EDIT (jesli jest; jak juz w trybie edycji - moze nie byc, wtedy idziemy dalej)
+$edit=Find-El $win @('edytuj'); if(-not $edit){ $edit=Find-El $win @('^edit') }; if(-not $edit){ $edit=Find-El $win @('edit') }
+if($edit){ Write-Host ("Klikam EDIT: '"+$edit.Current.Name+"'") -ForegroundColor Green; Klik-El $edit|Out-Null; Start-Sleep -Milliseconds 1600 }
+else{ Write-Host "Brak przycisku Edit (moze juz w trybie edycji) - probuje wpisac." -ForegroundColor DarkYellow }
+
+# 2) ZNAJDZ pole po obecnej wartosci
+$szukaj=$OBECNA.ToLower(); $target=$null
 foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){
-  $nm=(ToAscii $e.Current.Name).ToLower(); $val=(ToAscii (Get-Val $e)).ToLower()
-  if( ($nm -eq $szukaj) -or ($val -eq $szukaj) -or ($nm -match $szukaj) -or ($val -match $szukaj) ){
-    $ct=$e.Current.ControlType.ProgrammaticName
-    # preferuj pole edytowalne (Edit/ComboBox); zapamietaj pierwszy pasujacy
-    if(-not $target){ $target=$e }
-    if($ct -match 'Edit|ComboBox'){ $target=$e; break }
-  }
-}
+ $nm=(ToAscii $e.Current.Name).ToLower(); $val=(ToAscii (Get-Val $e)).ToLower()
+ if( ($nm -match $szukaj) -or ($val -match $szukaj) ){ $ct=$e.Current.ControlType.ProgrammaticName; if(-not $target){ $target=$e }; if($ct -match 'Edit|ComboBox'){ $target=$e; break } } }
 
+# 3) WPISZ
 if($target){
-  Write-Host ("Znalazlem pole grupy: ["+$target.Current.ControlType.ProgrammaticName+"] name='"+$target.Current.Name+"' val='"+(Get-Val $target)+"'") -ForegroundColor Green
-  # najpierw sprobuj ValuePattern.SetValue
-  $zrobione=$false
-  try{ $vp=$target.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern); $vp.SetValue($GRUPA); $zrobione=$true; Write-Host "Ustawilem przez SetValue." -ForegroundColor Green }catch{}
-  if(-not $zrobione){
-    $r=$target.Current.BoundingRectangle
-    [Win]::Click([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2)); Start-Sleep -Milliseconds 400
-    [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 150
-    [System.Windows.Forms.SendKeys]::SendWait('{DELETE}'); Start-Sleep -Milliseconds 150
-    [System.Windows.Forms.SendKeys]::SendWait($GRUPA); Write-Host "Wpisalem przez klik+klawiatura." -ForegroundColor Green
-  }
-  Start-Sleep -Milliseconds 300; [console]::Beep(800,200)
-  Write-Host "GOTOWE - SPRAWDZ i ZAPISZ RECZNIE (nic nie zapisalem)." -ForegroundColor Cyan
+ Write-Host ("Pole grupy: ["+$target.Current.ControlType.ProgrammaticName+"] name='"+$target.Current.Name+"' val='"+(Get-Val $target)+"'") -ForegroundColor Green
+ Klik-El $target|Out-Null; Start-Sleep -Milliseconds 500
+ $zrobione=$false
+ try{ $vp=$target.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern); $vp.SetValue($GRUPA); $zrobione=$true; Write-Host "SetValue OK." -ForegroundColor Green }catch{}
+ if(-not $zrobione){ [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 150; [System.Windows.Forms.SendKeys]::SendWait('{DELETE}'); Start-Sleep -Milliseconds 150; [System.Windows.Forms.SendKeys]::SendWait($GRUPA); Write-Host "Wpisane klawiatura." -ForegroundColor Green }
+ Start-Sleep -Milliseconds 300; [console]::Beep(800,200); Write-Host "GOTOWE - SPRAWDZ i ZAPISZ RECZNIE." -ForegroundColor Cyan
 }else{
-  Write-Host "Nie znalazlem pola z wartoscia '$OBECNA'. Oto pola z wartosciami:" -ForegroundColor Red
-  $i=0
-  foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){
-    $ct=$e.Current.ControlType.ProgrammaticName; $val=Get-Val $e; $nm=$e.Current.Name
-    if($ct -match 'Edit|ComboBox' -or $val){ Write-Host ("  ["+$ct+"] name='"+$nm+"' val='"+$val+"'"); $i++; if($i -ge 60){break} }
-  }
+ Write-Host "Nie znalazlem pola z '$OBECNA'. Pola z wartosciami:" -ForegroundColor Red
+ $i=0; foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $ct=$e.Current.ControlType.ProgrammaticName; $val=Get-Val $e; if($ct -match 'Edit|ComboBox' -or $val){ Write-Host ("  ["+$ct+"] name='"+$e.Current.Name+"' val='"+$val+"'"); $i++; if($i -ge 60){break} } }
 }
