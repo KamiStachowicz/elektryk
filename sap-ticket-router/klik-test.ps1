@@ -31,8 +31,9 @@ Write-Host ("Przeszukuje elementow: "+$all.Count) -ForegroundColor DarkGray
 
 $cel=$null
 foreach($e in $all){
-  $nm=ToAscii $e.Current.Name
-  if($nm -match 'wyswietl' -and $nm -match 'szczeg'){ $cel=$e; break }
+  $nm=(ToAscii $e.Current.Name).ToLower()
+  # dwujezycznie: PL 'Wyswietl szczegoly' lub EN 'View Details'
+  if( ($nm -match 'wyswietl' -and $nm -match 'szczeg') -or ($nm -match 'view' -and $nm -match 'detail') ){ $cel=$e; break }
 }
 
 if($cel){
