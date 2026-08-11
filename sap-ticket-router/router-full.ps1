@@ -40,6 +40,7 @@ $Reguly = @(
 $OBECNA         = "TOOLS-ACCESS-MANAGEMENT"   # obecna grupa (do namierzenia pola)
 $KomentarzSlowa = 'notatk|komentarz|comment|\bnote\b|reply|add a note|wpisz|wiadomo|activity|aktywno'
 $TrybPopup = $true   # $true = popup Tak/Nie/Anuluj + auto-zapis; $false = pauza w konsoli (ENTER)
+$KomentarzPublic = $true   # zaznacz "Public" w notatce (zeby zglaszajacy widzial)
 $PlikLogu       = "$env:USERPROFILE\Documents\sap_router_log.csv"
 $PlikHistoria   = "$env:USERPROFILE\sap_router_historia.txt"   # numery juz odeslane (do wykrycia POWROTU)
 $HistoriaDni    = 90   # ile dni pamietac odeslane tickety (0 = bez limitu)
@@ -51,7 +52,7 @@ $NaszeWyjatki = @('BKP','BEP')                        # NIE nasze - ida wg tabel
 # KOMPLETNE tickety (system+user+rola) -> Ty (pod automatyzacje GRC)
 $Ja = 'M0235728'
 # NIEKOMPLETNE -> rotacja miedzy kolegami
-$Koledzy = @('M0076236','M0204125','M0227642','M0201404','M0234670')
+$Koledzy = @('M0076236','M0204125','M0227642','M0234670')   # Milosz (M0201404) usuniety
 $PlikRotacji = "$env:USERPROFILE\sap_router_rotacja.txt"
 $MaxTicketow    = 50
 $CzasLadowania  = 2500
@@ -183,7 +184,15 @@ function Akcja-Komentarz($win,$msg){
   $r=$target.Current.BoundingRectangle
   [Win]::Click([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2)); Start-Sleep -Milliseconds 500
   [System.Windows.Forms.SendKeys]::SendWait((EscSK $msg)); Start-Sleep -Milliseconds 300
+  if($KomentarzPublic){ foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ if($e.Current.ControlType.ProgrammaticName -notmatch 'CheckBox'){ continue }; $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -match 'public|publiczn'){ try{ $tp=$e.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern); if($tp.Current.ToggleState.ToString() -ne 'On'){ $rr=$e.Current.BoundingRectangle; [Win]::Click([int]($rr.X+$rr.Width/2),[int]($rr.Y+$rr.Height/2)) } }catch{}; break } } }
   [console]::Beep(800,200); return $true
+}
+# jesli wyskoczy ostrzezenie "unsaved data / continue?" - kliknij kontynuuj
+function Obsluz-Ostrzezenie($win){
+  $warn=$false
+  foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -match 'unsaved data|niezapisane dane|want to continue'){ $warn=$true; break } }
+  if(-not $warn){ return }
+  foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ if($e.Current.ControlType.ProgrammaticName -notmatch 'Button'){ continue }; $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -match '^yes$|^tak$|continue|^ok$'){ $r=$e.Current.BoundingRectangle; if($r.Width -gt 0){ [Win]::Click([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2)); Start-Sleep -Milliseconds 600; return } } }
 }
 
 # popup + auto-zapis
@@ -254,10 +263,11 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
     }else{
       $osoba=Nastepna-Osoba; $msg=Komentarz-Tresc $braki
       Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  NASZE NIEKOMPLETNY (brak: "+($braki -join '+')+") -> "+$osoba) -ForegroundColor Yellow
-      $win=Get-EdgeWindow
-      if(Akcja-Komentarz $win $msg){ $rz=Zatwierdz $win ("Wyslac komentarz: "+$msg) { param($ww) Wyslij-Komentarz $ww }; if($rz -eq 'stop'){ break }; if($rz -ne 'skip'){ $commented++ } }
-      $win=Get-EdgeWindow
-      if(Akcja-Osoba $win $osoba){ $rz=Zatwierdz $win ("Przypisac do "+$osoba+"?") { param($ww) Zapisz-Ticket $ww }; if($rz -eq 'stop'){ break }; if($rz -ne 'skip'){ $nasze++ } }
+      $win=Get-EdgeWindow; Akcja-Osoba $win $osoba | Out-Null
+      $win=Get-EdgeWindow; Akcja-Komentarz $win $msg | Out-Null
+      $rz=Zatwierdz $win ("Przypisz do "+$osoba+" + komentarz - zapisac?") { param($ww) Zapisz-Ticket $ww }
+      if($rz -eq 'stop'){ break }
+      if($rz -ne 'skip'){ $commented++; $nasze++ }
       $akcja='nasz-incomplete'
     }
   }elseif($w.Team){
@@ -269,15 +279,17 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
   }elseif($brakSys){
     $msg=Komentarz-Tresc @('system')
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  BRAK systemu -> KOMENTARZ") -ForegroundColor Magenta
-    $win=Get-EdgeWindow
-    if(Akcja-Komentarz $win $msg){ $rz=Zatwierdz $win ("Wyslac komentarz: "+$msg) { param($ww) Wyslij-Komentarz $ww }; if($rz -eq 'stop'){ break }; if($rz -ne 'skip'){ $akcja='comment'; $commented++ } }
+    $win=Get-EdgeWindow; Akcja-Komentarz $win $msg | Out-Null
+    $rz=Zatwierdz $win ("Komentarz (podaj system) - zapisac?") { param($ww) Zapisz-Ticket $ww }
+    if($rz -eq 'stop'){ break }
+    if($rz -ne 'skip'){ $akcja='comment'; $commented++ }
   }else{
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  DO_SPRAWDZENIA") -ForegroundColor Red
     $doReki += ("#"+$nr+" "+$tkey); $akcja='skip'
   }
   $wyniki += [pscustomobject]@{ Czas=(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'); Ticket=$tkey; System=$w.System; Team=$w.Team; Regula=$w.Regula; Akcja=$akcja; Braki=($brakiAll -join '+'); User=$w.UserName; UserId=$w.UserId; Role=($w.Role -join ';') }
 
-  $win=Get-EdgeWindow; Wstecz $win; Start-Sleep -Milliseconds $CzasListy
+  $win=Get-EdgeWindow; Wstecz $win; Start-Sleep -Milliseconds 700; $win=Get-EdgeWindow; Obsluz-Ostrzezenie $win; Start-Sleep -Milliseconds $CzasListy
 }
 
 Write-Host ""; Write-Host "=========== PODSUMOWANIE ===========" -ForegroundColor Cyan
