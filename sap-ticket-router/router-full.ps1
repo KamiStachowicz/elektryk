@@ -44,6 +44,7 @@ $MsgSystem = "Hi, please provide the SAP system this request concerns (e.g. P50,
 $MsgUser   = "Hi, please provide the user ID for this access (e.g. M0123456). Thanks."
 $MsgBoth   = "Hi, please provide the SAP system (e.g. P50) and the user ID (e.g. M0123456). Thanks."
 $PlikLogu       = "$env:USERPROFILE\Documents\sap_router_log.csv"
+$PlikHistoria   = "$env:USERPROFILE\sap_router_historia.txt"   # numery juz odeslane (do wykrycia POWROTU)
 $MaxTicketow    = 50
 $CzasLadowania  = 2500
 $CzasListy      = 1800
@@ -91,7 +92,7 @@ function Przetworz($txt){
 function Get-EdgeWindow{ foreach($w in $AE::RootElement.FindAll($TS::Children,$TRUE1)){ if($w.Current.Name -match 'Edge'){ return $w } }; return $null }
 function Get-ViewDetails($win){ $l=@(); foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $nm=(ToAscii $e.Current.Name).ToLower(); if( ($nm -match 'wyswietl' -and $nm -match 'szczeg') -or ($nm -match 'view' -and $nm -match 'detail') ){ $l+=$e } }; return $l }
 # klucz = STABILNE ID zgloszenia z wiersza (np. WO0000012345); fallback: caly tekst
-function Get-RowKey($btn){ $node=$btn; for($k=0;$k -lt 8;$k++){ $p=$WALK.GetParent($node); if(-not $p){ break }; $node=$p; $rr=$node.Current.BoundingRectangle; if($rr.Width -ge 400 -and $rr.Height -le 140){ break } }; $t=''; foreach($d in $node.FindAll($TS::Descendants,$TRUE1)){ $nm=$d.Current.Name; if($nm){ $t+=$nm+' ' } }; $m=[regex]::Match($t,'\b[A-Z]{2,4}\d{6,}\b'); if($m.Success){ return $m.Value }; return ($t -replace '\s+',' ').Trim() }
+function Get-RowKey($btn){ $node=$btn; for($k=0;$k -lt 8;$k++){ $p=$WALK.GetParent($node); if(-not $p){ break }; $node=$p; $rr=$node.Current.BoundingRectangle; if($rr.Width -ge 400 -and $rr.Height -le 140){ break } }; $t=''; foreach($d in $node.FindAll($TS::Descendants,$TRUE1)){ $nm=$d.Current.Name; if($nm){ $t+=$nm+' ' } }; $m=[regex]::Match($t,'\b[A-Z]{1,4}\d{7,}\b'); if($m.Success){ return $m.Value }; return ($t -replace '\s+',' ').Trim() }
 function Find-El($win,[string[]]$musi){ foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $nm=(ToAscii $e.Current.Name).ToLower(); if(-not $nm){continue}; $ok=$true; foreach($m in $musi){ if($nm -notmatch $m){ $ok=$false; break } }; if($ok){ return $e } }; return $null }
 function Klik-XY($x,$y){ [Win]::Click([int]$x,[int]$y) }
 function Klik-El($el){ $r=$el.Current.BoundingRectangle; if($r.Width -le 0){ return $false }; [Win]::Click([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2)); return $true }
@@ -142,7 +143,9 @@ $vd=Get-ViewDetails $win; Write-Host ("Widocznych na starcie: "+$vd.Count) -Fore
 if($vd.Count -eq 0){ Write-Host "Brak 'View Details'." -ForegroundColor Red; return }
 for($c=6;$c -ge 1;$c--){ Write-Host ("Start za "+$c+"s - zostaw myszke...") -ForegroundColor Yellow; Start-Sleep -Seconds 1 }
 
-$routed=0; $commented=0; $waiting=0; $doReki=@(); $seen=@{}; $stall=0; $nr=0; $wyniki=@()
+$routed=0; $commented=0; $waiting=0; $powroty=0; $doReki=@(); $seen=@{}; $stall=0; $nr=0; $wyniki=@()
+$historia=@{}; if(Test-Path $PlikHistoria){ foreach($l in Get-Content $PlikHistoria){ $l=$l.Trim(); if($l){ $historia[$l]=1 } } }
+Write-Host ("Historia odeslanych: "+$historia.Count+" numerow") -ForegroundColor DarkGray
 
 while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
   $win=Get-EdgeWindow; $vd=Get-ViewDetails $win
@@ -160,7 +163,10 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
   $braki=@(); if($brakSys){$braki+='system'}; if($brakUser){$braki+='user'}
   $juzPytano = ($txt -match 'please provide the SAP system') -or ($txt -match 'please provide the user ID')
   $akcja=''
-  if($juzPytano){
+  if($historia.ContainsKey($tkey)){
+    Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  !!! POWROT - ten ticket juz byl odeslany! Cos nie tak - SPRAWDZ RECZNIE") -ForegroundColor Red
+    [console]::Beep(400,400); $akcja='POWROT'; $powroty++
+  }elseif($juzPytano){
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  JUZ PYTANO - czekam na odpowiedz (pomijam)") -ForegroundColor DarkYellow
     $akcja='waiting'; $waiting++
   }elseif($brakSys -or ($PytajOUsera -and $brakUser)){
@@ -173,7 +179,7 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
     if($w.Role.Count -gt 0){ Write-Host ("   ROLE: "+($w.Role -join ', ')) }
     Write-Host ("   AKCJA: przypisz do "+$w.Team) -ForegroundColor Yellow
     $win=Get-EdgeWindow
-    if(Akcja-Grupa $win $w.Team){ Read-Host "   >>> SPRAWDZ i ZAPISZ ticket w Edge, potem ENTER"; $akcja='assign'; $routed++ }
+    if(Akcja-Grupa $win $w.Team){ Read-Host "   >>> SPRAWDZ i ZAPISZ ticket w Edge, potem ENTER"; $akcja='assign'; $routed++; $historia[$tkey]=1; Add-Content -Path $PlikHistoria -Value $tkey }
   }else{
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  DO_SPRAWDZENIA") -ForegroundColor Red
     $doReki += ("#"+$nr+" "+$tkey); $akcja='skip'
@@ -188,6 +194,7 @@ Write-Host ("Przetworzone : "+$nr)
 Write-Host ("Zroutowane   : "+$routed) -ForegroundColor Green
 Write-Host ("Komentarze   : "+$commented) -ForegroundColor Magenta
 Write-Host ("Czeka (juz pytano): "+$waiting) -ForegroundColor DarkYellow
+Write-Host ("POWROTY (!)  : "+$powroty) -ForegroundColor Red
 Write-Host ("DO_SPRAWDZENIA: "+$doReki.Count) -ForegroundColor Red
 if($doReki.Count -gt 0){ $doReki | ForEach-Object { Write-Host ("  - "+$_) } }
 if($wyniki.Count -gt 0){ $wyniki | Export-Csv -Path $PlikLogu -NoTypeInformation -Encoding UTF8 }
