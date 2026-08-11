@@ -45,6 +45,7 @@ $MsgUser   = "Hi, please provide the user ID for this access (e.g. M0123456). Th
 $MsgBoth   = "Hi, please provide the SAP system (e.g. P50) and the user ID (e.g. M0123456). Thanks."
 $PlikLogu       = "$env:USERPROFILE\Documents\sap_router_log.csv"
 $PlikHistoria   = "$env:USERPROFILE\sap_router_historia.txt"   # numery juz odeslane (do wykrycia POWROTU)
+$HistoriaDni    = 90   # ile dni pamietac odeslane tickety (0 = bez limitu)
 $MaxTicketow    = 50
 $CzasLadowania  = 2500
 $CzasListy      = 1800
@@ -144,8 +145,19 @@ if($vd.Count -eq 0){ Write-Host "Brak 'View Details'." -ForegroundColor Red; ret
 for($c=6;$c -ge 1;$c--){ Write-Host ("Start za "+$c+"s - zostaw myszke...") -ForegroundColor Yellow; Start-Sleep -Seconds 1 }
 
 $routed=0; $commented=0; $waiting=0; $powroty=0; $doReki=@(); $seen=@{}; $stall=0; $nr=0; $wyniki=@()
-$historia=@{}; if(Test-Path $PlikHistoria){ foreach($l in Get-Content $PlikHistoria){ $l=$l.Trim(); if($l){ $historia[$l]=1 } } }
-Write-Host ("Historia odeslanych: "+$historia.Count+" numerow") -ForegroundColor DarkGray
+$historia=@{}
+if(Test-Path $PlikHistoria){
+  $keep=@()
+  foreach($l in Get-Content $PlikHistoria){
+    $l=$l.Trim(); if(-not $l){ continue }
+    $p=$l -split ';',2; $id=$p[0]; $data=if($p.Count -gt 1){ $p[1] } else { '' }
+    $stary=$false
+    if($HistoriaDni -gt 0 -and $data){ try{ if(((Get-Date)-[datetime]$data).TotalDays -gt $HistoriaDni){ $stary=$true } }catch{} }
+    if(-not $stary){ $historia[$id]=1; $keep+=$l }
+  }
+  Set-Content -Path $PlikHistoria -Value $keep -Encoding UTF8   # przytnij stare
+}
+Write-Host ("Historia odeslanych: "+$historia.Count+" numerow (pamiec: "+$(if($HistoriaDni -gt 0){$HistoriaDni.ToString()+' dni'}else{'bez limitu'})+")") -ForegroundColor DarkGray
 
 while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
   $win=Get-EdgeWindow; $vd=Get-ViewDetails $win
@@ -179,7 +191,7 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
     if($w.Role.Count -gt 0){ Write-Host ("   ROLE: "+($w.Role -join ', ')) }
     Write-Host ("   AKCJA: przypisz do "+$w.Team) -ForegroundColor Yellow
     $win=Get-EdgeWindow
-    if(Akcja-Grupa $win $w.Team){ Read-Host "   >>> SPRAWDZ i ZAPISZ ticket w Edge, potem ENTER"; $akcja='assign'; $routed++; $historia[$tkey]=1; Add-Content -Path $PlikHistoria -Value $tkey }
+    if(Akcja-Grupa $win $w.Team){ Read-Host "   >>> SPRAWDZ i ZAPISZ ticket w Edge, potem ENTER"; $akcja='assign'; $routed++; $historia[$tkey]=1; Add-Content -Path $PlikHistoria -Value ($tkey+';'+(Get-Date -Format 'yyyy-MM-dd')) }
   }else{
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  DO_SPRAWDZENIA") -ForegroundColor Red
     $doReki += ("#"+$nr+" "+$tkey); $akcja='skip'
