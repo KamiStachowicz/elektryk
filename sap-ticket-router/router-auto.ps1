@@ -73,7 +73,7 @@ $vd=Get-ViewDetails $win; Write-Host ("Widocznych ticketow na starcie: "+$vd.Cou
 if($vd.Count -eq 0){ Write-Host "Brak 'View Details'." -ForegroundColor Red; return }
 for($c=6;$c -ge 1;$c--){ Write-Host ("Start za "+$c+"s - zostaw myszke w spokoju...") -ForegroundColor Yellow; Start-Sleep -Seconds 1 }
 
-$licz=@{ NASZE=0; GSD=0; DO_SPRAWDZENIA=0 }; $doReki=@(); $seen=@{}; $stall=0; $nr=0
+$licz=@{ NASZE=0; GSD=0; DO_SPRAWDZENIA=0 }; $doReki=@(); $seen=@{}; $stall=0; $nr=0; $wyniki=@()
 
 while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
   $win=Get-EdgeWindow; $vd=Get-ViewDetails $win
@@ -97,7 +97,7 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
   Write-Host ("   SYSTEM="+$w.System+"  DECYZJA="+$w.Decyzja+$(if($osoba){"  -> "+$osoba}else{''})) -ForegroundColor $kol
   if($w.Role.Count -gt 0){ Write-Host ("   ROLE: "+($w.Role -join ', ')) }
   $licz[$w.Decyzja]++; if($w.Decyzja -eq 'DO_SPRAWDZENIA'){ $doReki += ("#"+$nr+" user="+$w.UserName) }
-  [pscustomobject]@{ Czas=(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'); System=$w.System; Decyzja=$w.Decyzja; Osoba=$osoba; User=$w.UserName; UserId=$w.UserId; Role=($w.Role -join ';') } | Export-Csv -Path $PlikLogu -Append -NoTypeInformation -Encoding UTF8
+  $wyniki += [pscustomobject]@{ Czas=(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'); System=$w.System; Decyzja=$w.Decyzja; Osoba=$osoba; User=$w.UserName; UserId=$w.UserId; Role=($w.Role -join ';') }
 
   Wstecz $win; Start-Sleep -Milliseconds $CzasListy
 }
@@ -108,4 +108,5 @@ Write-Host ("NASZE        : "+$licz.NASZE) -ForegroundColor Green
 Write-Host ("GSD          : "+$licz.GSD) -ForegroundColor Yellow
 Write-Host ("DO_SPRAWDZENIA: "+$licz.DO_SPRAWDZENIA) -ForegroundColor Red
 if($doReki.Count -gt 0){ Write-Host "Do recznego sprawdzenia:"; $doReki | ForEach-Object { Write-Host ("  - "+$_) } }
+if($wyniki.Count -gt 0){ $wyniki | Export-Csv -Path $PlikLogu -NoTypeInformation -Encoding UTF8 }
 Write-Host ("Log: "+$PlikLogu) -ForegroundColor DarkGray; Write-Host "====================================" -ForegroundColor Cyan
