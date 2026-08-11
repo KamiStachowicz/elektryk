@@ -19,6 +19,7 @@ public class Win {
  [DllImport("user32.dll")] public static extern void mouse_event(uint f,uint x,uint y,uint d,int e);
  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
  public static void Click(int x,int y){ SetCursorPos(x,y); mouse_event(0x0002,0,0,0,0); mouse_event(0x0004,0,0,0,0); }
+ public static void Wheel(int x,int y,int delta){ SetCursorPos(x,y); mouse_event(0x0800,0,0,(uint)delta,0); }
 }
 "@
 $AE=[System.Windows.Automation.AutomationElement]; $TS=[System.Windows.Automation.TreeScope]; $TRUE1=[System.Windows.Automation.Condition]::TrueCondition
@@ -29,6 +30,21 @@ function Find-El($win,[string[]]$musi){ foreach($e in $win.FindAll($TS::Descenda
 function Klik-XY($x,$y){ [Win]::Click([int]$x,[int]$y) }
 function Klik-El($el){ $r=$el.Current.BoundingRectangle; if($r.Width -le 0){ return $false }; [Win]::Click([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2)); return $true }
 # maly przycisk (X) tuz obok pola, w tym samym wierszu
+# przewin pole do bezpiecznej strefy (nie za nisko - zeby nie kliknac w pasek zadan)
+function Zapewnij-Widok($el){
+  try{ ($el.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern)).ScrollIntoView() }catch{}
+  Start-Sleep -Milliseconds 500
+  $sh=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height
+  for($k=0;$k -lt 8;$k++){
+    $r=$el.Current.BoundingRectangle
+    if($r.Width -le 0){ Start-Sleep -Milliseconds 300; continue }
+    $cy=$r.Y+$r.Height/2
+    if($cy -gt 110 -and $cy -lt ($sh-160)){ break }
+    $wy=[int]($sh/2)
+    if($cy -ge ($sh-160)){ [Win]::Wheel([int]($r.X+10),$wy,-160) } else { [Win]::Wheel([int]($r.X+10),$wy,160) }
+    Start-Sleep -Milliseconds 450
+  }
+}
 function Find-ClearX($win,$field){
   $fr=$field.Current.BoundingRectangle
   foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){
@@ -52,8 +68,9 @@ $szukaj=$OBECNA.ToLower(); $target=$null
 foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $nm=(ToAscii $e.Current.Name).ToLower(); $val=(ToAscii (Get-Val $e)).ToLower(); if( ($nm -match $szukaj) -or ($val -match $szukaj) ){ $ct=$e.Current.ControlType.ProgrammaticName; if(-not $target){ $target=$e }; if($ct -match 'Edit|ComboBox'){ $target=$e; break } } }
 
 if($target){
+  Zapewnij-Widok $target
   $fr=$target.Current.BoundingRectangle; $cx=[int]($fr.X+$fr.Width/2); $cy=[int]($fr.Y+$fr.Height/2)
-  Write-Host ("Pole: ["+$target.Current.ControlType.ProgrammaticName+"] val='"+(Get-Val $target)+"'") -ForegroundColor Green
+  Write-Host ("Pole: ["+$target.Current.ControlType.ProgrammaticName+"] val='"+(Get-Val $target)+"' y="+[int]$fr.Y) -ForegroundColor Green
 
   # 3) focus + wyczysc
   Klik-XY $cx $cy; Start-Sleep -Milliseconds 350
