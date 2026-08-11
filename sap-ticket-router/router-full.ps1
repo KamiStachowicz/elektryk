@@ -39,10 +39,6 @@ $Reguly = @(
 
 $OBECNA         = "TOOLS-ACCESS-MANAGEMENT"   # obecna grupa (do namierzenia pola)
 $KomentarzSlowa = 'notatk|komentarz|comment|\bnote\b|reply|add a note|wpisz|wiadomo|activity|aktywno'
-$PytajOUsera    = $true   # czy pytac komentarzem gdy brak ID usera (gdy system jest)
-$MsgSystem = "Hi, please provide the SAP system this request concerns (e.g. P50, BWP). Thanks."
-$MsgUser   = "Hi, please provide the user ID for this access (e.g. M0123456). Thanks."
-$MsgBoth   = "Hi, please provide the SAP system (e.g. P50) and the user ID (e.g. M0123456). Thanks."
 $PlikLogu       = "$env:USERPROFILE\Documents\sap_router_log.csv"
 $PlikHistoria   = "$env:USERPROFILE\sap_router_historia.txt"   # numery juz odeslane (do wykrycia POWROTU)
 $HistoriaDni    = 90   # ile dni pamietac odeslane tickety (0 = bez limitu)
@@ -51,9 +47,10 @@ $HistoriaDni    = 90   # ile dni pamietac odeslane tickety (0 = bez limitu)
 $NaszeExact   = @('P4M','K4M','Q4M','P50','PGT','P02','PGE','G4M','D4M','M4M','T4M','E50','M50','Q50')
 $NaszeWzorce  = @('^B.P$','^.TM$','^.EW$','^IA.$')   # BxP, xTM, xEW, IAx
 $NaszeWyjatki = @('BKP','BEP')                        # NIE nasze - ida wg tabeli
-# Zespol do rotacji (login = to co wpisujemy w Assignee)
-$Zespol = @('M0076236','M0204125','M0227642','M0201404','M0235728','M0234670')
-$RotujZeMna  = $true                 # $false = pomin M0235728 (Kamil) w rotacji
+# KOMPLETNE tickety (system+user+rola) -> Ty (pod automatyzacje GRC)
+$Ja = 'M0235728'
+# NIEKOMPLETNE -> rotacja miedzy kolegami
+$Koledzy = @('M0076236','M0204125','M0227642','M0201404','M0234670')
 $PlikRotacji = "$env:USERPROFILE\sap_router_rotacja.txt"
 $MaxTicketow    = 50
 $CzasLadowania  = 2500
@@ -87,10 +84,14 @@ function NaszSystem($txt){
   return $null
 }
 function Nastepna-Osoba{
-  $lista = if($RotujZeMna){ $Zespol } else { @($Zespol | Where-Object { $_ -ne 'M0235728' }) }
-  if($lista.Count -eq 0){ return '' }
+  if($Koledzy.Count -eq 0){ return '' }
   $idx=0; if(Test-Path $PlikRotacji){ try{ $idx=[int](Get-Content $PlikRotacji -Raw) }catch{ $idx=0 } }
-  $o=$lista[$idx % $lista.Count]; Set-Content -Path $PlikRotacji -Value (($idx+1) % $lista.Count); return $o
+  $o=$Koledzy[$idx % $Koledzy.Count]; Set-Content -Path $PlikRotacji -Value (($idx+1) % $Koledzy.Count); return $o
+}
+function Komentarz-Tresc($braki){
+  $p=@(); if($braki -contains 'system'){ $p+='the SAP system (e.g. P50)' }; if($braki -contains 'user'){ $p+='the user ID (e.g. M0123456)' }; if($braki -contains 'role'){ $p+='the role(s) required' }
+  if($p.Count -eq 0){ return '' }
+  return ('Hi, please provide '+($p -join ' and ')+'. Thanks.')
 }
 function Wykryj-Systemy($txt){ $up=$txt.ToUpper(); $found=@(); foreach($s in $ZnaneSystemy){ if($up -match ('\b'+[regex]::Escape($s)+'\b')){ $found+=$s } }; return $found }
 function Zespol-Dla($txt){
@@ -217,9 +218,9 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
   Klik-XY ([int]($r.X+$r.Width/2)) ([int]($r.Y+$r.Height/2)); Start-Sleep -Milliseconds $CzasLadowania
 
   $win=Get-EdgeWindow; $txt=Kopiuj-Strone $win; $w=Przetworz $txt
-  $brakSys=[string]::IsNullOrEmpty($w.System); $brakUser=[string]::IsNullOrEmpty($w.UserId)
-  $braki=@(); if($brakSys){$braki+='system'}; if($brakUser){$braki+='user'}
-  $juzPytano = ($txt -match 'please provide the SAP system') -or ($txt -match 'please provide the user ID')
+  $brakSys=[string]::IsNullOrEmpty($w.System); $brakUser=[string]::IsNullOrEmpty($w.UserId); $brakRole=($w.Role.Count -eq 0)
+  $brakiAll=@(); if($brakSys){$brakiAll+='system'}; if($brakUser){$brakiAll+='user'}; if($brakRole){$brakiAll+='role'}
+  $juzPytano = ($txt -match 'please provide')
   $akcja=''
   if($historia.ContainsKey($tkey)){
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  !!! POWROT - ten ticket juz byl odeslany! Cos nie tak - SPRAWDZ RECZNIE") -ForegroundColor Red
@@ -227,29 +228,38 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
   }elseif($juzPytano){
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  JUZ PYTANO - czekam na odpowiedz (pomijam)") -ForegroundColor DarkYellow
     $akcja='waiting'; $waiting++
-  }elseif($brakSys -or ($PytajOUsera -and $brakUser)){
-    if($brakSys -and $brakUser){ $msg=$MsgBoth } elseif($brakSys){ $msg=$MsgSystem } else { $msg=$MsgUser }
-    Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  BRAK: "+($braki -join '+')+"  -> KOMENTARZ") -ForegroundColor Magenta
-    $win=Get-EdgeWindow
-    if(Akcja-Komentarz $win $msg){ Read-Host "   >>> SPRAWDZ i WYSLIJ komentarz w Edge, potem ENTER"; $akcja='comment'; $commented++ }
   }elseif($w.Nasz){
-    $osoba=Nastepna-Osoba
-    Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  NASZE -> "+$osoba) -ForegroundColor Cyan
-    if($w.Role.Count -gt 0){ Write-Host ("   ROLE: "+($w.Role -join ', ')) }
-    Write-Host ("   AKCJA: przypisz osobe "+$osoba) -ForegroundColor Yellow
-    $win=Get-EdgeWindow
-    if(Akcja-Osoba $win $osoba){ Read-Host "   >>> SPRAWDZ i ZAPISZ ticket w Edge, potem ENTER"; $akcja='assign-person'; $nasze++ }
+    $braki=@(); if($brakUser){$braki+='user'}; if($brakRole){$braki+='role'}
+    if($braki.Count -eq 0){
+      Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  NASZE KOMPLETNY -> "+$Ja) -ForegroundColor Cyan
+      Write-Host ("   ROLE: "+($w.Role -join ', '))
+      $win=Get-EdgeWindow
+      if(Akcja-Osoba $win $Ja){ Read-Host "   >>> SPRAWDZ i ZAPISZ (przypisanie do Ciebie), potem ENTER"; $akcja='nasz-complete'; $nasze++ }
+    }else{
+      $osoba=Nastepna-Osoba; $msg=Komentarz-Tresc $braki
+      Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  NASZE NIEKOMPLETNY (brak: "+($braki -join '+')+") -> "+$osoba) -ForegroundColor Yellow
+      $win=Get-EdgeWindow
+      if(Akcja-Komentarz $win $msg){ Read-Host "   >>> SPRAWDZ i WYSLIJ komentarz, potem ENTER"; $commented++ }
+      $win=Get-EdgeWindow
+      if(Akcja-Osoba $win $osoba){ Read-Host ("   >>> SPRAWDZ i ZAPISZ (przypisanie do "+$osoba+"), potem ENTER"); $nasze++ }
+      $akcja='nasz-incomplete'
+    }
   }elseif($w.Team){
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  -> "+$w.Team+"  ["+$w.Regula+"]") -ForegroundColor Green
     if($w.Role.Count -gt 0){ Write-Host ("   ROLE: "+($w.Role -join ', ')) }
     Write-Host ("   AKCJA: przypisz do "+$w.Team) -ForegroundColor Yellow
     $win=Get-EdgeWindow
     if(Akcja-Grupa $win $w.Team){ Read-Host "   >>> SPRAWDZ i ZAPISZ ticket w Edge, potem ENTER"; $akcja='assign'; $routed++; $historia[$tkey]=1; Add-Content -Path $PlikHistoria -Value ($tkey+';'+(Get-Date -Format 'yyyy-MM-dd')) }
+  }elseif($brakSys){
+    $msg=Komentarz-Tresc @('system')
+    Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  BRAK systemu -> KOMENTARZ") -ForegroundColor Magenta
+    $win=Get-EdgeWindow
+    if(Akcja-Komentarz $win $msg){ Read-Host "   >>> SPRAWDZ i WYSLIJ komentarz, potem ENTER"; $akcja='comment'; $commented++ }
   }else{
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  DO_SPRAWDZENIA") -ForegroundColor Red
     $doReki += ("#"+$nr+" "+$tkey); $akcja='skip'
   }
-  $wyniki += [pscustomobject]@{ Czas=(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'); Ticket=$tkey; System=$w.System; Team=$w.Team; Regula=$w.Regula; Akcja=$akcja; Braki=($braki -join '+'); User=$w.UserName; UserId=$w.UserId; Role=($w.Role -join ';') }
+  $wyniki += [pscustomobject]@{ Czas=(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'); Ticket=$tkey; System=$w.System; Team=$w.Team; Regula=$w.Regula; Akcja=$akcja; Braki=($brakiAll -join '+'); User=$w.UserName; UserId=$w.UserId; Role=($w.Role -join ';') }
 
   $win=Get-EdgeWindow; Wstecz $win; Start-Sleep -Milliseconds $CzasListy
 }
