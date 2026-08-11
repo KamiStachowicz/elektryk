@@ -77,6 +77,39 @@ def wyluskaj_system(opis: str):
     return m2.group(0) if m2 else None
 
 
+def wyluskaj_role(opis: str) -> list:
+    """Zwraca liste rol SAP z opisu ticketu.
+
+    Role w Mahle maja postac np.: ZMM1164TA-MM_ANZEIGE, ZPP1164TP-DISPO_COCKP_OP_USER
+    Wzorzec: Z + litery/cyfry + '-' + litery/cyfry/podkreslenia.
+    Jak u Was role bywaja bez 'Z' na poczatku - popraw WZORZEC_ROLI.
+    """
+    WZORZEC_ROLI = r"\bZ[A-Z0-9]+-[A-Z0-9_]+\b"
+    znalezione = re.findall(WZORZEC_ROLI, opis, re.IGNORECASE)
+    # unikalne, zachowujac kolejnosc, wielkimi literami
+    wynik = []
+    for r in znalezione:
+        rr = r.upper()
+        if rr not in wynik:
+            wynik.append(rr)
+    return wynik
+
+
+def wyluskaj_usera(opis: str) -> dict:
+    """Zwraca dane usera z opisu: pelne imie i (jesli jest) ID typu E0148940 / M0177262."""
+    imie = None
+    m = re.search(r"#User\s*Full\s*Name\s*:+\s*([^\r\n]+)", opis, re.IGNORECASE)
+    if m:
+        imie = m.group(1).strip()
+
+    user_id = None
+    m2 = re.search(r"\b[EM]\d{7}\b", opis)  # E + 7 cyfr lub M + 7 cyfr
+    if m2:
+        user_id = m2.group(0)
+
+    return {"imie": imie, "user_id": user_id}
+
+
 def czy_nasz(system: str) -> bool:
     """True, jesli system jest na liscie ALBO pasuje do wzorca."""
     s = system.strip().upper()
