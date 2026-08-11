@@ -142,7 +142,7 @@ $vd=Get-ViewDetails $win; Write-Host ("Widocznych na starcie: "+$vd.Count) -Fore
 if($vd.Count -eq 0){ Write-Host "Brak 'View Details'." -ForegroundColor Red; return }
 for($c=6;$c -ge 1;$c--){ Write-Host ("Start za "+$c+"s - zostaw myszke...") -ForegroundColor Yellow; Start-Sleep -Seconds 1 }
 
-$routed=0; $commented=0; $doReki=@(); $seen=@{}; $stall=0; $nr=0; $wyniki=@()
+$routed=0; $commented=0; $waiting=0; $doReki=@(); $seen=@{}; $stall=0; $nr=0; $wyniki=@()
 
 while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
   $win=Get-EdgeWindow; $vd=Get-ViewDetails $win
@@ -158,8 +158,12 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
   $win=Get-EdgeWindow; $txt=Kopiuj-Strone $win; $w=Przetworz $txt
   $brakSys=[string]::IsNullOrEmpty($w.System); $brakUser=[string]::IsNullOrEmpty($w.UserId)
   $braki=@(); if($brakSys){$braki+='system'}; if($brakUser){$braki+='user'}
+  $juzPytano = ($txt -match 'please provide the SAP system') -or ($txt -match 'please provide the user ID')
   $akcja=''
-  if($brakSys -or ($PytajOUsera -and $brakUser)){
+  if($juzPytano){
+    Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  JUZ PYTANO - czekam na odpowiedz (pomijam)") -ForegroundColor DarkYellow
+    $akcja='waiting'; $waiting++
+  }elseif($brakSys -or ($PytajOUsera -and $brakUser)){
     if($brakSys -and $brakUser){ $msg=$MsgBoth } elseif($brakSys){ $msg=$MsgSystem } else { $msg=$MsgUser }
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  BRAK: "+($braki -join '+')+"  -> KOMENTARZ") -ForegroundColor Magenta
     $win=Get-EdgeWindow
@@ -183,6 +187,7 @@ Write-Host ""; Write-Host "=========== PODSUMOWANIE ===========" -ForegroundColo
 Write-Host ("Przetworzone : "+$nr)
 Write-Host ("Zroutowane   : "+$routed) -ForegroundColor Green
 Write-Host ("Komentarze   : "+$commented) -ForegroundColor Magenta
+Write-Host ("Czeka (juz pytano): "+$waiting) -ForegroundColor DarkYellow
 Write-Host ("DO_SPRAWDZENIA: "+$doReki.Count) -ForegroundColor Red
 if($doReki.Count -gt 0){ $doReki | ForEach-Object { Write-Host ("  - "+$_) } }
 if($wyniki.Count -gt 0){ $wyniki | Export-Csv -Path $PlikLogu -NoTypeInformation -Encoding UTF8 }
