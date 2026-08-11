@@ -38,6 +38,11 @@ $Reguly = @(
 # ----------------------------------------------------------------------------------
 
 $OBECNA         = "TOOLS-ACCESS-MANAGEMENT"   # obecna grupa (do namierzenia pola)
+$KomentarzSlowa = 'notatk|komentarz|comment|\bnote\b|reply|add a note|wpisz|wiadomo|activity|aktywno'
+$PytajOUsera    = $true   # czy pytac komentarzem gdy brak ID usera (gdy system jest)
+$MsgSystem = "Hi, please provide the SAP system this request concerns (e.g. P50, BWP). Thanks."
+$MsgUser   = "Hi, please provide the user ID for this access (e.g. M0123456). Thanks."
+$MsgBoth   = "Hi, please provide the SAP system (e.g. P50) and the user ID (e.g. M0123456). Thanks."
 $PlikLogu       = "$env:USERPROFILE\Documents\sap_router_log.csv"
 $MaxTicketow    = 50
 $CzasLadowania  = 2500
@@ -59,6 +64,7 @@ $AE=[System.Windows.Automation.AutomationElement]; $TS=[System.Windows.Automatio
 $WALK=[System.Windows.Automation.TreeWalker]::ControlViewWalker
 
 function ToAscii($s){ if(-not $s){return ''}; $n=$s.Normalize([Text.NormalizationForm]::FormD); -join($n.ToCharArray()|Where-Object{[Globalization.CharUnicodeInfo]::GetUnicodeCategory($_) -ne 'NonSpacingMark'}) }
+function EscSK($s){ $r=''; foreach($c in $s.ToCharArray()){ if('+^%~(){}[]'.Contains([string]$c)){ $r+='{'+$c+'}' } else { $r+=$c } }; return $r }
 function Get-Val($e){ try{ $vp=$e.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern); return $vp.Current.Value }catch{ return $null } }
 
 function Wykryj-Systemy($txt){ $up=$txt.ToUpper(); $found=@(); foreach($s in $ZnaneSystemy){ if($up -match ('\b'+[regex]::Escape($s)+'\b')){ $found+=$s } }; return $found }
@@ -110,9 +116,21 @@ function Akcja-Grupa($win,$grupa){
   if($x){ Klik-El $x|Out-Null; Start-Sleep -Milliseconds 350 } else { [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 150; [System.Windows.Forms.SendKeys]::SendWait('{DELETE}'); Start-Sleep -Milliseconds 250 }
   Klik-XY ($fr.X+10) ($fr.Y-28); Start-Sleep -Milliseconds 350
   Klik-XY $cx $cy; Start-Sleep -Milliseconds 400
-  [System.Windows.Forms.SendKeys]::SendWait($grupa); Start-Sleep -Milliseconds 1000
+  [System.Windows.Forms.SendKeys]::SendWait((EscSK $grupa)); Start-Sleep -Milliseconds 1000
   [System.Windows.Forms.SendKeys]::SendWait('{DOWN}'); Start-Sleep -Milliseconds 250
   [System.Windows.Forms.SendKeys]::SendWait('{ENTER}'); Start-Sleep -Milliseconds 300
+  [console]::Beep(800,200); return $true
+}
+
+# AKCJA: wpisz komentarz $msg (nie wysyla). Zwraca $true.
+function Akcja-Komentarz($win,$msg){
+  $target=$null
+  foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $ct=$e.Current.ControlType.ProgrammaticName; if($ct -notmatch 'Edit|Document|Text'){ continue }; $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -match $KomentarzSlowa){ $target=$e; break } }
+  if(-not $target){ Write-Host "   [komentarz] nie znalazlem pola - pomijam" -ForegroundColor Red; return $false }
+  Zapewnij-Widok $target
+  $r=$target.Current.BoundingRectangle
+  [Win]::Click([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2)); Start-Sleep -Milliseconds 500
+  [System.Windows.Forms.SendKeys]::SendWait((EscSK $msg)); Start-Sleep -Milliseconds 300
   [console]::Beep(800,200); return $true
 }
 
@@ -124,7 +142,7 @@ $vd=Get-ViewDetails $win; Write-Host ("Widocznych na starcie: "+$vd.Count) -Fore
 if($vd.Count -eq 0){ Write-Host "Brak 'View Details'." -ForegroundColor Red; return }
 for($c=6;$c -ge 1;$c--){ Write-Host ("Start za "+$c+"s - zostaw myszke...") -ForegroundColor Yellow; Start-Sleep -Seconds 1 }
 
-$routed=0; $doReki=@(); $seen=@{}; $stall=0; $nr=0; $wyniki=@()
+$routed=0; $commented=0; $doReki=@(); $seen=@{}; $stall=0; $nr=0; $wyniki=@()
 
 while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
   $win=Get-EdgeWindow; $vd=Get-ViewDetails $win
@@ -138,18 +156,25 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
   Klik-XY ([int]($r.X+$r.Width/2)) ([int]($r.Y+$r.Height/2)); Start-Sleep -Milliseconds $CzasLadowania
 
   $win=Get-EdgeWindow; $txt=Kopiuj-Strone $win; $w=Przetworz $txt
-  if($w.Team){
+  $brakSys=[string]::IsNullOrEmpty($w.System); $brakUser=[string]::IsNullOrEmpty($w.UserId)
+  $braki=@(); if($brakSys){$braki+='system'}; if($brakUser){$braki+='user'}
+  $akcja=''
+  if($brakSys -or ($PytajOUsera -and $brakUser)){
+    if($brakSys -and $brakUser){ $msg=$MsgBoth } elseif($brakSys){ $msg=$MsgSystem } else { $msg=$MsgUser }
+    Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  BRAK: "+($braki -join '+')+"  -> KOMENTARZ") -ForegroundColor Magenta
+    $win=Get-EdgeWindow
+    if(Akcja-Komentarz $win $msg){ Read-Host "   >>> SPRAWDZ i WYSLIJ komentarz w Edge, potem ENTER"; $akcja='comment'; $commented++ }
+  }elseif($w.Team){
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  -> "+$w.Team+"  ["+$w.Regula+"]") -ForegroundColor Green
     if($w.Role.Count -gt 0){ Write-Host ("   ROLE: "+($w.Role -join ', ')) }
-    Write-Host ("   AKCJA: przypisz do "+$w.Team+" (nie zapisuje)") -ForegroundColor Yellow
+    Write-Host ("   AKCJA: przypisz do "+$w.Team) -ForegroundColor Yellow
     $win=Get-EdgeWindow
-    if(Akcja-Grupa $win $w.Team){ Read-Host "   >>> SPRAWDZ i ZAPISZ ticket w Edge, potem ENTER" }
-    $routed++
+    if(Akcja-Grupa $win $w.Team){ Read-Host "   >>> SPRAWDZ i ZAPISZ ticket w Edge, potem ENTER"; $akcja='assign'; $routed++ }
   }else{
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  DO_SPRAWDZENIA") -ForegroundColor Red
-    $doReki += ("#"+$nr+" "+$tkey+" system="+$w.System+" user="+$w.UserName)
+    $doReki += ("#"+$nr+" "+$tkey); $akcja='skip'
   }
-  $wyniki += [pscustomobject]@{ Czas=(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'); Ticket=$tkey; System=$w.System; Team=$w.Team; Regula=$w.Regula; User=$w.UserName; UserId=$w.UserId; Role=($w.Role -join ';') }
+  $wyniki += [pscustomobject]@{ Czas=(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'); Ticket=$tkey; System=$w.System; Team=$w.Team; Regula=$w.Regula; Akcja=$akcja; Braki=($braki -join '+'); User=$w.UserName; UserId=$w.UserId; Role=($w.Role -join ';') }
 
   $win=Get-EdgeWindow; Wstecz $win; Start-Sleep -Milliseconds $CzasListy
 }
@@ -157,6 +182,7 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
 Write-Host ""; Write-Host "=========== PODSUMOWANIE ===========" -ForegroundColor Cyan
 Write-Host ("Przetworzone : "+$nr)
 Write-Host ("Zroutowane   : "+$routed) -ForegroundColor Green
+Write-Host ("Komentarze   : "+$commented) -ForegroundColor Magenta
 Write-Host ("DO_SPRAWDZENIA: "+$doReki.Count) -ForegroundColor Red
 if($doReki.Count -gt 0){ $doReki | ForEach-Object { Write-Host ("  - "+$_) } }
 if($wyniki.Count -gt 0){ $wyniki | Export-Csv -Path $PlikLogu -NoTypeInformation -Encoding UTF8 }
