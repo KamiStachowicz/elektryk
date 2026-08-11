@@ -39,6 +39,7 @@ $Reguly = @(
 
 $OBECNA         = "TOOLS-ACCESS-MANAGEMENT"   # obecna grupa (do namierzenia pola)
 $KomentarzSlowa = 'notatk|komentarz|comment|\bnote\b|reply|add a note|wpisz|wiadomo|activity|aktywno'
+$TrybPopup = $true   # $true = popup Tak/Nie/Anuluj + auto-zapis; $false = pauza w konsoli (ENTER)
 $PlikLogu       = "$env:USERPROFILE\Documents\sap_router_log.csv"
 $PlikHistoria   = "$env:USERPROFILE\sap_router_historia.txt"   # numery juz odeslane (do wykrycia POWROTU)
 $HistoriaDni    = 90   # ile dni pamietac odeslane tickety (0 = bez limitu)
@@ -183,6 +184,19 @@ function Akcja-Komentarz($win,$msg){
   [console]::Beep(800,200); return $true
 }
 
+# popup + auto-zapis
+function Potwierdz($tekst){ return [System.Windows.Forms.MessageBox]::Show($tekst+"`n`nTAK = zapisz i dalej    NIE = pomin (bez zapisu)    ANULUJ = STOP","Router - potwierdz",'YesNoCancel','Question') }
+function Klik-Przycisk($win,$regex){ foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ if($e.Current.ControlType.ProgrammaticName -notmatch 'Button'){ continue }; $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -match $regex){ $r=$e.Current.BoundingRectangle; if($r.Width -gt 0){ [Win]::Click([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2)); return $true } } }; return $false }
+function Zapisz-Ticket($win){ return (Klik-Przycisk $win '^zapisz$|^save$|zapisz zmiany|save changes|zapisz i') }
+function Wyslij-Komentarz($win){ return (Klik-Przycisk $win 'post|wyslij|^add$|dodaj notatke|^zapisz$|^save$') }
+function Zatwierdz($win,$opis,$saveFn){
+  if(-not $TrybPopup){ Read-Host ("   >>> "+$opis+" - sprawdz, ZAPISZ recznie, ENTER"); return 'saved' }
+  $odp=Potwierdz $opis
+  if($odp -eq 'Cancel'){ return 'stop' }
+  if($odp -eq 'Yes'){ Start-Sleep -Milliseconds 200; if(& $saveFn $win){ Write-Host "   zapisano" -ForegroundColor Green } else { Read-Host "   nie znalazlem przycisku zapisu - zrob recznie i ENTER" }; return 'saved' }
+  Write-Host "   pominieto (bez zapisu)" -ForegroundColor DarkGray; return 'skip'
+}
+
 # --- Start ---
 Clear-Host
 Write-Host "SAP Ticket Router - PELNY (routing do zespolow)" -ForegroundColor Cyan
@@ -234,14 +248,14 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
       Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  NASZE KOMPLETNY -> "+$Ja) -ForegroundColor Cyan
       Write-Host ("   ROLE: "+($w.Role -join ', '))
       $win=Get-EdgeWindow
-      if(Akcja-Osoba $win $Ja){ Read-Host "   >>> SPRAWDZ i ZAPISZ (przypisanie do Ciebie), potem ENTER"; $akcja='nasz-complete'; $nasze++ }
+      if(Akcja-Osoba $win $Ja){ $rz=Zatwierdz $win ("Przypisac do CIEBIE ("+$Ja+")?") { param($ww) Zapisz-Ticket $ww }; if($rz -eq 'stop'){ break }; if($rz -ne 'skip'){ $akcja='nasz-complete'; $nasze++ } else { $akcja='nasz-skip' } }
     }else{
       $osoba=Nastepna-Osoba; $msg=Komentarz-Tresc $braki
       Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  NASZE NIEKOMPLETNY (brak: "+($braki -join '+')+") -> "+$osoba) -ForegroundColor Yellow
       $win=Get-EdgeWindow
-      if(Akcja-Komentarz $win $msg){ Read-Host "   >>> SPRAWDZ i WYSLIJ komentarz, potem ENTER"; $commented++ }
+      if(Akcja-Komentarz $win $msg){ $rz=Zatwierdz $win ("Wyslac komentarz: "+$msg) { param($ww) Wyslij-Komentarz $ww }; if($rz -eq 'stop'){ break }; if($rz -ne 'skip'){ $commented++ } }
       $win=Get-EdgeWindow
-      if(Akcja-Osoba $win $osoba){ Read-Host ("   >>> SPRAWDZ i ZAPISZ (przypisanie do "+$osoba+"), potem ENTER"); $nasze++ }
+      if(Akcja-Osoba $win $osoba){ $rz=Zatwierdz $win ("Przypisac do "+$osoba+"?") { param($ww) Zapisz-Ticket $ww }; if($rz -eq 'stop'){ break }; if($rz -ne 'skip'){ $nasze++ } }
       $akcja='nasz-incomplete'
     }
   }elseif($w.Team){
@@ -249,12 +263,12 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
     if($w.Role.Count -gt 0){ Write-Host ("   ROLE: "+($w.Role -join ', ')) }
     Write-Host ("   AKCJA: przypisz do "+$w.Team) -ForegroundColor Yellow
     $win=Get-EdgeWindow
-    if(Akcja-Grupa $win $w.Team){ Read-Host "   >>> SPRAWDZ i ZAPISZ ticket w Edge, potem ENTER"; $akcja='assign'; $routed++; $historia[$tkey]=1; Add-Content -Path $PlikHistoria -Value ($tkey+';'+(Get-Date -Format 'yyyy-MM-dd')) }
+    if(Akcja-Grupa $win $w.Team){ $rz=Zatwierdz $win ("Przypisac grupe: "+$w.Team+"?") { param($ww) Zapisz-Ticket $ww }; if($rz -eq 'stop'){ break }; if($rz -ne 'skip'){ $akcja='assign'; $routed++; $historia[$tkey]=1; Add-Content -Path $PlikHistoria -Value ($tkey+';'+(Get-Date -Format 'yyyy-MM-dd')) } else { $akcja='assign-skip' } }
   }elseif($brakSys){
     $msg=Komentarz-Tresc @('system')
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  BRAK systemu -> KOMENTARZ") -ForegroundColor Magenta
     $win=Get-EdgeWindow
-    if(Akcja-Komentarz $win $msg){ Read-Host "   >>> SPRAWDZ i WYSLIJ komentarz, potem ENTER"; $akcja='comment'; $commented++ }
+    if(Akcja-Komentarz $win $msg){ $rz=Zatwierdz $win ("Wyslac komentarz: "+$msg) { param($ww) Wyslij-Komentarz $ww }; if($rz -eq 'stop'){ break }; if($rz -ne 'skip'){ $akcja='comment'; $commented++ } }
   }else{
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  DO_SPRAWDZENIA") -ForegroundColor Red
     $doReki += ("#"+$nr+" "+$tkey); $akcja='skip'
