@@ -46,6 +46,15 @@ $MsgBoth   = "Hi, please provide the SAP system (e.g. P50) and the user ID (e.g.
 $PlikLogu       = "$env:USERPROFILE\Documents\sap_router_log.csv"
 $PlikHistoria   = "$env:USERPROFILE\sap_router_historia.txt"   # numery juz odeslane (do wykrycia POWROTU)
 $HistoriaDni    = 90   # ile dni pamietac odeslane tickety (0 = bez limitu)
+
+# ---- NASZE systemy (obsluguje zespol -> rotacja osob) ----
+$NaszeExact   = @('P4M','K4M','Q4M','P50','PGT','P02','PGE','G4M','D4M','M4M','T4M','E50','M50','Q50')
+$NaszeWzorce  = @('^B.P$','^.TM$','^.EW$','^IA.$')   # BxP, xTM, xEW, IAx
+$NaszeWyjatki = @('BKP','BEP')                        # NIE nasze - ida wg tabeli
+# Zespol do rotacji (login = to co wpisujemy w Assignee)
+$Zespol = @('M0076236','M0204125','M0227642','M0201404','M0235728','M0234670')
+$RotujZeMna  = $true                 # $false = pomin M0235728 (Kamil) w rotacji
+$PlikRotacji = "$env:USERPROFILE\sap_router_rotacja.txt"
 $MaxTicketow    = 50
 $CzasLadowania  = 2500
 $CzasListy      = 1800
@@ -69,6 +78,20 @@ function ToAscii($s){ if(-not $s){return ''}; $n=$s.Normalize([Text.Normalizatio
 function EscSK($s){ $r=''; foreach($c in $s.ToCharArray()){ if('+^%~(){}[]'.Contains([string]$c)){ $r+='{'+$c+'}' } else { $r+=$c } }; return $r }
 function Get-Val($e){ try{ $vp=$e.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern); return $vp.Current.Value }catch{ return $null } }
 
+function Czy-Nasz($s){ if(-not $s){return $false}; $s=$s.ToUpper(); if($NaszeWyjatki -contains $s){ return $false }; if($NaszeExact -contains $s){ return $true }; foreach($w in $NaszeWzorce){ if($s -match $w){ return $true } }; return $false }
+function NaszSystem($txt){
+  # wildcardy (BxP, xEW...) TYLKO z pola Application Name (pewne)
+  if($txt -match '#Application\s*Name\s*:+\s*([A-Za-z0-9]{2,4})'){ $s=$Matches[1].ToUpper(); if(Czy-Nasz $s){ return $s } }
+  # luzny skan tekstu tylko dla DOKLADNYCH nazw (zeby nie zlapac np. NEW)
+  foreach($m in [regex]::Matches($txt,'\b[A-Za-z0-9]{3}\b')){ $s=$m.Value.ToUpper(); if($NaszeExact -contains $s){ return $s } }
+  return $null
+}
+function Nastepna-Osoba{
+  $lista = if($RotujZeMna){ $Zespol } else { @($Zespol | Where-Object { $_ -ne 'M0235728' }) }
+  if($lista.Count -eq 0){ return '' }
+  $idx=0; if(Test-Path $PlikRotacji){ try{ $idx=[int](Get-Content $PlikRotacji -Raw) }catch{ $idx=0 } }
+  $o=$lista[$idx % $lista.Count]; Set-Content -Path $PlikRotacji -Value (($idx+1) % $lista.Count); return $o
+}
 function Wykryj-Systemy($txt){ $up=$txt.ToUpper(); $found=@(); foreach($s in $ZnaneSystemy){ if($up -match ('\b'+[regex]::Escape($s)+'\b')){ $found+=$s } }; return $found }
 function Zespol-Dla($txt){
   $low=$txt.ToLower(); $sys=@(Wykryj-Systemy $txt)
@@ -82,13 +105,16 @@ function Zespol-Dla($txt){
 }
 
 function Przetworz($txt){
- $zd=Zespol-Dla $txt
- $team=$zd.Team; $system=($zd.Sys -join ',')
- if(-not $system){ foreach($e in $Etykiety){ if($txt -match $e){ $system=$Matches[1].ToUpper(); break } } }
+ $nasz=NaszSystem $txt
+ if($nasz){ $team=''; $system=$nasz; $regula='NASZE'; $czyNasz=$true }
+ else{
+   $zd=Zespol-Dla $txt; $team=$zd.Team; $system=($zd.Sys -join ','); $regula=$zd.Regula; $czyNasz=$false
+   if(-not $system){ foreach($e in $Etykiety){ if($txt -match $e){ $system=$Matches[1].ToUpper(); break } } }
+ }
  $role=@(); foreach($m in [regex]::Matches($txt,'\bZ[A-Z0-9]+-[A-Z0-9_]+\b','IgnoreCase')){ $r=$m.Value.ToUpper(); if($role -notcontains $r){$role+=$r} }
  $userName=''; if($txt -match '#User\s*Full\s*Name\s*:+\s*([^\r\n]+)'){ $userName=$Matches[1].Trim() }
  $userId=''; if($txt -match '\b[EM]\d{7}\b'){ $userId=$Matches[0] }
- return [pscustomobject]@{ System=$system; Team=$team; Regula=$zd.Regula; Role=$role; UserName=$userName; UserId=$userId } }
+ return [pscustomobject]@{ System=$system; Team=$team; Nasz=$czyNasz; Regula=$regula; Role=$role; UserName=$userName; UserId=$userId } }
 
 function Get-EdgeWindow{ foreach($w in $AE::RootElement.FindAll($TS::Children,$TRUE1)){ if($w.Current.Name -match 'Edge'){ return $w } }; return $null }
 function Get-ViewDetails($win){ $l=@(); foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $nm=(ToAscii $e.Current.Name).ToLower(); if( ($nm -match 'wyswietl' -and $nm -match 'szczeg') -or ($nm -match 'view' -and $nm -match 'detail') ){ $l+=$e } }; return $l }
@@ -124,6 +150,26 @@ function Akcja-Grupa($win,$grupa){
   [console]::Beep(800,200); return $true
 }
 
+# AKCJA: Edit -> pole "Assignee" (osoba) -> wpisz $osoba (nie zapisuje). Zwraca $true.
+function Akcja-Osoba($win,$osoba){
+  $edit=Find-El $win @('edytuj'); if(-not $edit){ $edit=Find-El $win @('^edit') }; if(-not $edit){ $edit=Find-El $win @('edit') }
+  if($edit){ Klik-El $edit|Out-Null; Start-Sleep -Milliseconds 1600 }
+  $target=$null
+  foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $ct=$e.Current.ControlType.ProgrammaticName; if($ct -notmatch 'Edit|ComboBox'){ continue }; $nm=(ToAscii $e.Current.Name).ToLower(); if( ($nm -match 'assignee|przypisan|assigned to|osoba') -and ($nm -notmatch 'group|grupa') ){ $target=$e; break } }
+  if(-not $target){ Write-Host "   [osoba] nie znalazlem pola Assignee - pomijam" -ForegroundColor Red; return $false }
+  Zapewnij-Widok $target
+  $fr=$target.Current.BoundingRectangle; $cx=[int]($fr.X+$fr.Width/2); $cy=[int]($fr.Y+$fr.Height/2)
+  Klik-XY $cx $cy; Start-Sleep -Milliseconds 350
+  $x=Find-ClearX $win $target
+  if($x){ Klik-El $x|Out-Null; Start-Sleep -Milliseconds 350 } else { [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 150; [System.Windows.Forms.SendKeys]::SendWait('{DELETE}'); Start-Sleep -Milliseconds 250 }
+  Klik-XY ($fr.X+10) ($fr.Y-28); Start-Sleep -Milliseconds 350
+  Klik-XY $cx $cy; Start-Sleep -Milliseconds 400
+  [System.Windows.Forms.SendKeys]::SendWait((EscSK $osoba)); Start-Sleep -Milliseconds 1000
+  [System.Windows.Forms.SendKeys]::SendWait('{DOWN}'); Start-Sleep -Milliseconds 250
+  [System.Windows.Forms.SendKeys]::SendWait('{ENTER}'); Start-Sleep -Milliseconds 300
+  [console]::Beep(800,200); return $true
+}
+
 # AKCJA: wpisz komentarz $msg (nie wysyla). Zwraca $true.
 function Akcja-Komentarz($win,$msg){
   $target=$null
@@ -144,7 +190,7 @@ $vd=Get-ViewDetails $win; Write-Host ("Widocznych na starcie: "+$vd.Count) -Fore
 if($vd.Count -eq 0){ Write-Host "Brak 'View Details'." -ForegroundColor Red; return }
 for($c=6;$c -ge 1;$c--){ Write-Host ("Start za "+$c+"s - zostaw myszke...") -ForegroundColor Yellow; Start-Sleep -Seconds 1 }
 
-$routed=0; $commented=0; $waiting=0; $powroty=0; $doReki=@(); $seen=@{}; $stall=0; $nr=0; $wyniki=@()
+$routed=0; $nasze=0; $commented=0; $waiting=0; $powroty=0; $doReki=@(); $seen=@{}; $stall=0; $nr=0; $wyniki=@()
 $historia=@{}
 if(Test-Path $PlikHistoria){
   $keep=@()
@@ -186,6 +232,13 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  BRAK: "+($braki -join '+')+"  -> KOMENTARZ") -ForegroundColor Magenta
     $win=Get-EdgeWindow
     if(Akcja-Komentarz $win $msg){ Read-Host "   >>> SPRAWDZ i WYSLIJ komentarz w Edge, potem ENTER"; $akcja='comment'; $commented++ }
+  }elseif($w.Nasz){
+    $osoba=Nastepna-Osoba
+    Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  NASZE -> "+$osoba) -ForegroundColor Cyan
+    if($w.Role.Count -gt 0){ Write-Host ("   ROLE: "+($w.Role -join ', ')) }
+    Write-Host ("   AKCJA: przypisz osobe "+$osoba) -ForegroundColor Yellow
+    $win=Get-EdgeWindow
+    if(Akcja-Osoba $win $osoba){ Read-Host "   >>> SPRAWDZ i ZAPISZ ticket w Edge, potem ENTER"; $akcja='assign-person'; $nasze++ }
   }elseif($w.Team){
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  -> "+$w.Team+"  ["+$w.Regula+"]") -ForegroundColor Green
     if($w.Role.Count -gt 0){ Write-Host ("   ROLE: "+($w.Role -join ', ')) }
@@ -203,6 +256,7 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
 
 Write-Host ""; Write-Host "=========== PODSUMOWANIE ===========" -ForegroundColor Cyan
 Write-Host ("Przetworzone : "+$nr)
+Write-Host ("NASZE (osoba): "+$nasze) -ForegroundColor Cyan
 Write-Host ("Zroutowane   : "+$routed) -ForegroundColor Green
 Write-Host ("Komentarze   : "+$commented) -ForegroundColor Magenta
 Write-Host ("Czeka (juz pytano): "+$waiting) -ForegroundColor DarkYellow
