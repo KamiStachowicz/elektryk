@@ -179,6 +179,15 @@ def zdecyduj(opis: str, tytul: str = "") -> dict:
     Priorytet 1: pole '#Application Name' z opisu.
     Priorytet 2: jesli w opisie nie ma pola - szukaj naszego systemu w tytule.
     """
+    # Regula specjalna: shopfloor -> Global Service Desk
+    if re.search(r"shopfloor", opis, re.IGNORECASE) or re.search(r"shopfloor", tytul, re.IGNORECASE):
+        return {
+            "system": "SHOPFLOOR",
+            "decyzja": "GSD",
+            "przypisany": None,
+            "powod": "Shopfloor -> GLOBAL-SERVICEDESK",
+        }
+
     system = wyluskaj_system(opis)
     zrodlo = "opis (#Application Name)"
 
