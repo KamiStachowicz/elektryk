@@ -4,7 +4,7 @@
 #  Zaloz OTWARTY ticket w Edge.
 #  Jak nie znajdzie - wypisze pola tekstowe (wklej mi je).
 # ============================================================
-$WIADOMOSC = "TEST - prosze o podanie systemu SAP oraz identyfikatora uzytkownika."
+$WIADOMOSC = "Hi, please provide the SAP system (e.g. P50) and the user ID (e.g. M0123456). Thanks."
 
 Add-Type -AssemblyName UIAutomationClient; Add-Type -AssemblyName UIAutomationTypes; Add-Type -AssemblyName System.Windows.Forms
 Add-Type @"
