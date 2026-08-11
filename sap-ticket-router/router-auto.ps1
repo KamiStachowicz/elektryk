@@ -70,12 +70,8 @@ function Get-ViewDetails($win){
 function Kopiuj-Strone($win){
   [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle) | Out-Null
   Start-Sleep -Milliseconds 300
-  # ustaw focus na TRESC strony (dokument webowy), a nie na pasek adresu
-  try{
-    $docCond=New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty,[System.Windows.Automation.ControlType]::Document)
-    $doc=$win.FindFirst($TS::Descendants,$docCond)
-    if($doc){ $doc.SetFocus() }
-  }catch{}
+  # Tab przenosi focus z paska przegladarki do TRESCI strony
+  [System.Windows.Forms.SendKeys]::SendWait('{TAB}')
   Start-Sleep -Milliseconds 250
   [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 200
   [System.Windows.Forms.SendKeys]::SendWait('^c'); Start-Sleep -Milliseconds 400
