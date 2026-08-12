@@ -152,8 +152,17 @@ function Klik-EditAssignee($win){
   if($edit){ Write-Host ("   [edit] klikam '"+$edit.Current.Name+"'") -ForegroundColor DarkGray; Front $win; Klik-El $edit|Out-Null; Start-Sleep -Milliseconds 2000; return $true }
   Write-Host "   [edit] nie znalazlem 'Edit assignee'" -ForegroundColor Red; return $false
 }
-# znajdz pole ComboBox/Edit po nazwie (z retry - edytor moze sie renderowac chwile)
-function Znajdz-Pole($win,$substr){ for($i=0;$i -lt 5;$i++){ $e=Find1 $win $CTL::ComboBox $substr; if(-not $e){ $e=Find1 $win $CTL::Edit $substr }; if($e){ return $e }; Start-Sleep -Milliseconds 700 }; return $null }
+# znajdz pole ComboBox/Edit wg listy nazw (priorytet) z wykluczeniami; z retry
+function Znajdz-PoleEx($win,$includes,$excludes){
+  for($i=0;$i -lt 5;$i++){
+    $cb=@($win.FindAll($TS::Descendants,(New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty,$CTL::ComboBox))))
+    $ed=@($win.FindAll($TS::Descendants,(New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty,$CTL::Edit))))
+    $all=$cb+$ed
+    foreach($inc in $includes){ foreach($e in $all){ $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -match $inc){ $bad=$false; foreach($x in $excludes){ if($x -and ($nm -match $x)){ $bad=$true; break } }; if(-not $bad){ return $e } } } }
+    Start-Sleep -Milliseconds 700
+  }
+  return $null
+}
 # przewin do pola, wyczysc (Ctrl+A+Del), wpisz, wybierz z podpowiedzi
 function Wpisz-Combo($win,$target,$wartosc){
   Front $win
@@ -172,8 +181,8 @@ function Wpisz-Combo($win,$target,$wartosc){
 # AKCJA: Edit assignee -> pole "Support group" -> wpisz $grupa (nie zapisuje). Zwraca $true.
 function Akcja-Grupa($win,$grupa){
   Klik-EditAssignee $win | Out-Null
-  $t=Znajdz-Pole $win 'Support group'
-  if(-not $t){ Write-Host "   [grupa] nie znalazlem pola 'Support group'" -ForegroundColor Red; return $false }
+  $t=Znajdz-PoleEx $win @('assignee support group','support group') @('manager')
+  if(-not $t){ Write-Host "   [grupa] nie znalazlem pola grupy" -ForegroundColor Red; return $false }
   Wpisz-Combo $win $t $grupa
   [console]::Beep(800,200); return $true
 }
@@ -181,9 +190,8 @@ function Akcja-Grupa($win,$grupa){
 # AKCJA: Edit assignee -> pole "Person" -> wpisz $osoba (nie zapisuje). Zwraca $true.
 function Akcja-Osoba($win,$osoba){
   Klik-EditAssignee $win | Out-Null
-  $t=Znajdz-Pole $win 'Person'
-  if(-not $t){ $t=Znajdz-Pole $win 'Assignee' }
-  if(-not $t){ Write-Host "   [osoba] nie znalazlem pola 'Person'" -ForegroundColor Red; return $false }
+  $t=Znajdz-PoleEx $win @('request assignee','\bperson\b','assignee') @('group','grupa','manager')
+  if(-not $t){ Write-Host "   [osoba] nie znalazlem pola osoby (Request assignee/Person)" -ForegroundColor Red; return $false }
   Wpisz-Combo $win $t $osoba
   [console]::Beep(800,200); return $true
 }
