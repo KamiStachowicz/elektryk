@@ -134,6 +134,7 @@ function Get-RowKey($btn){ $node=$btn; for($k=0;$k -lt 8;$k++){ $p=$WALK.GetPare
 function Find-El($win,[string[]]$musi){ foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $nm=(ToAscii $e.Current.Name).ToLower(); if(-not $nm){continue}; $ok=$true; foreach($m in $musi){ if($nm -notmatch $m){ $ok=$false; break } }; if($ok){ return $e } }; return $null }
 function Klik-XY($x,$y){ [Win]::Click([int]$x,[int]$y) }
 function Klik-El($el){ $r=$el.Current.BoundingRectangle; if($r.Width -le 0){ return $false }; [Win]::Click([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2)); return $true }
+function Front($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle)|Out-Null; Start-Sleep -Milliseconds 350 }
 function Do-Widoku($el){ try{ ($el.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern)).ScrollIntoView() }catch{} }
 function Przewin-Dol($vd){ if($vd.Count -gt 0){ $r=$vd[$vd.Count-1].Current.BoundingRectangle; [Win]::Wheel([int]($r.X+$r.Width/2),[int]($r.Y),-700) } }
 function Zapewnij-Widok($el){ try{ ($el.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern)).ScrollIntoView() }catch{}; Start-Sleep -Milliseconds 500; $sh=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height; for($k=0;$k -lt 8;$k++){ $r=$el.Current.BoundingRectangle; if($r.Width -le 0){ Start-Sleep -Milliseconds 300; continue }; $cy=$r.Y+$r.Height/2; if($cy -gt 110 -and $cy -lt ($sh-160)){ break }; $wy=[int]($sh/2); if($cy -ge ($sh-160)){ [Win]::Wheel([int]($r.X+10),$wy,-160) } else { [Win]::Wheel([int]($r.X+10),$wy,160) }; Start-Sleep -Milliseconds 450 } }
@@ -145,6 +146,7 @@ function Wstecz($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWin
 
 # klik "Edit assignee" (otwiera edytor grupy/osoby)
 function Klik-EditAssignee($win){
+  Front $win
   $edit=Find1 $win $CTL::Button 'edit assignee'; if(-not $edit){ $edit=Find1 $win $CTL::Hyperlink 'edit assignee' }
   if(-not $edit){ $edit=Find1 $win $CTL::Button 'edit' }
   if($edit){ Write-Host ("   [edit] klikam '"+$edit.Current.Name+"'") -ForegroundColor DarkGray; Klik-El $edit|Out-Null; Start-Sleep -Milliseconds 2000; return $true }
@@ -184,6 +186,7 @@ function Akcja-Osoba($win,$osoba){
 
 # AKCJA: wpisz komentarz $msg (nie wysyla). Zwraca $true.
 function Akcja-Komentarz($win,$msg){
+  Front $win
   $target=Find1 $win $CTL::Edit "New note"
   if(-not $target){ Write-Host "   [komentarz] nie znalazlem pola 'New note' - pomijam" -ForegroundColor Red; return $false }
   Zapewnij-Widok $target
@@ -202,7 +205,7 @@ function Zatwierdz($win,$opis,$saveFn){
   if(-not $TrybPopup){ Read-Host ("   >>> "+$opis+" - sprawdz, ZAPISZ recznie, ENTER"); return 'saved' }
   $odp=Potwierdz $opis
   if($odp -eq 'Cancel'){ return 'stop' }
-  if($odp -eq 'Yes'){ Start-Sleep -Milliseconds 200; if(& $saveFn $win){ Write-Host "   zapisano" -ForegroundColor Green } else { Read-Host "   nie znalazlem przycisku zapisu - zrob recznie i ENTER" }; return 'saved' }
+  if($odp -eq 'Yes'){ Front $win; if(& $saveFn $win){ Write-Host "   zapisano" -ForegroundColor Green } else { Read-Host "   nie znalazlem przycisku zapisu - zrob recznie i ENTER" }; return 'saved' }
   Write-Host "   pominieto (bez zapisu)" -ForegroundColor DarkGray; return 'skip'
 }
 
