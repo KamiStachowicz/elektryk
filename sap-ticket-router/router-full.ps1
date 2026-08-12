@@ -72,6 +72,9 @@ public class Win {
 "@ }
 $AE=[System.Windows.Automation.AutomationElement]; $TS=[System.Windows.Automation.TreeScope]; $TRUE1=[System.Windows.Automation.Condition]::TrueCondition
 $WALK=[System.Windows.Automation.TreeWalker]::ControlViewWalker
+$CTL=[System.Windows.Automation.ControlType]
+# SZYBKIE wyszukiwanie: FindFirst po ControlType+Name (silnik UIA, nie skan w PS)
+function Find1($root,$ctype,$name){ $c=New-Object System.Windows.Automation.AndCondition((New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty,$ctype)),(New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty,$name))); return $root.FindFirst($TS::Descendants,$c) }
 
 function ToAscii($s){ if(-not $s){return ''}; $n=$s.Normalize([Text.NormalizationForm]::FormD); -join($n.ToCharArray()|Where-Object{[Globalization.CharUnicodeInfo]::GetUnicodeCategory($_) -ne 'NonSpacingMark'}) }
 function EscSK($s){ $r=''; foreach($c in $s.ToCharArray()){ if('+^%~(){}[]'.Contains([string]$c)){ $r+='{'+$c+'}' } else { $r+=$c } }; return $r }
@@ -135,33 +138,24 @@ function Przewin-Dol($vd){ if($vd.Count -gt 0){ $r=$vd[$vd.Count-1].Current.Boun
 function Zapewnij-Widok($el){ try{ ($el.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern)).ScrollIntoView() }catch{}; Start-Sleep -Milliseconds 500; $sh=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height; for($k=0;$k -lt 8;$k++){ $r=$el.Current.BoundingRectangle; if($r.Width -le 0){ Start-Sleep -Milliseconds 300; continue }; $cy=$r.Y+$r.Height/2; if($cy -gt 110 -and $cy -lt ($sh-160)){ break }; $wy=[int]($sh/2); if($cy -ge ($sh-160)){ [Win]::Wheel([int]($r.X+10),$wy,-160) } else { [Win]::Wheel([int]($r.X+10),$wy,160) }; Start-Sleep -Milliseconds 450 } }
 function Find-ClearX($win,$field){ $fr=$field.Current.BoundingRectangle; foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ if($e.Current.ControlType.ProgrammaticName -notmatch 'Button'){ continue }; $br=$e.Current.BoundingRectangle; if($br.Width -le 0 -or $br.Width -gt 45){ continue }; if([Math]::Abs(($br.Y+$br.Height/2)-($fr.Y+$fr.Height/2)) -lt 22 -and $br.X -ge ($fr.X-5) -and $br.X -le ($fr.X+$fr.Width+70)){ return $e } }; return $null }
 function Kopiuj-Strone($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle)|Out-Null; Start-Sleep -Milliseconds 300; [System.Windows.Forms.SendKeys]::SendWait('{TAB}'); Start-Sleep -Milliseconds 250; [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 200; [System.Windows.Forms.SendKeys]::SendWait('^c'); Start-Sleep -Milliseconds 400; return (Get-Clipboard -Raw) }
-# czyta ticket = clipboard (Ctrl+A) + teksty z UIA (panel Activity/komentarze)
-function Czytaj-Strone($win){ $c=Kopiuj-Strone $win; $sb=New-Object System.Text.StringBuilder; foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $ct=$e.Current.ControlType.ProgrammaticName; if($ct -match 'Text|Document|Edit'){ $nm=$e.Current.Name; if($nm){ [void]$sb.Append($nm); [void]$sb.Append("`n") }; $v=Get-Val $e; if($v){ [void]$sb.Append($v); [void]$sb.Append("`n") } } }; return ($c+"`n"+$sb.ToString()) }
+# czyta ticket = clipboard (Ctrl+A lapie tresc + komentarze). Bez skanu drzewa.
+function Czytaj-Strone($win){ return (Kopiuj-Strone $win) }
 function Wstecz($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle)|Out-Null; Start-Sleep -Milliseconds 200; [System.Windows.Forms.SendKeys]::SendWait('%{LEFT}') }
 
-# klik "Edit assignee" (otwiera edytor grupy/osoby w SmartIT)
+# klik "Edit assignee" (otwiera edytor grupy/osoby) - SZYBKO
 function Klik-EditAssignee($win){
-  $edit=$null
-  foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ if($e.Current.ControlType.ProgrammaticName -notmatch 'Button|Hyperlink'){ continue }; $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -match 'edit assignee'){ $edit=$e; break } }
-  if(-not $edit){ foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ if($e.Current.ControlType.ProgrammaticName -notmatch 'Button|Hyperlink'){ continue }; $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -match 'edytuj|^edit'){ $edit=$e; break } } }
+  $edit=Find1 $win $CTL::Button "Edit assignee"; if(-not $edit){ $edit=Find1 $win $CTL::Hyperlink "Edit assignee" }
   if($edit){ Klik-El $edit|Out-Null; Start-Sleep -Milliseconds 1800; return $true }
   return $false
 }
-# znajdz pole (ComboBox/Edit) po dokladnej nazwie
-function Znajdz-Pole($win,$nazwa){
-  foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $ct=$e.Current.ControlType.ProgrammaticName; if($ct -notmatch 'ComboBox|Edit'){ continue }; $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -eq $nazwa){ return $e } }
-  return $null
-}
-# przewin do pola, wyczysc (przyciskiem clear jesli jest), wpisz i wybierz z podpowiedzi
-function Wpisz-Combo($win,$target,$wartosc,$clearRegex){
+# znajdz pole ComboBox/Edit po dokladnej nazwie - SZYBKO
+function Znajdz-Pole($win,$nazwa){ $e=Find1 $win $CTL::ComboBox $nazwa; if(-not $e){ $e=Find1 $win $CTL::Edit $nazwa }; return $e }
+# przewin do pola, wyczysc (Ctrl+A+Del), wpisz, wybierz z podpowiedzi
+function Wpisz-Combo($win,$target,$wartosc){
   Zapewnij-Widok $target
   $fr=$target.Current.BoundingRectangle; $cx=[int]($fr.X+$fr.Width/2); $cy=[int]($fr.Y+$fr.Height/2)
   Klik-XY $cx $cy; Start-Sleep -Milliseconds 400
-  if($clearRegex){
-    $clr=$null; foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ if($e.Current.ControlType.ProgrammaticName -notmatch 'Button'){ continue }; $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -match $clearRegex){ $clr=$e; break } }
-    if($clr){ Klik-El $clr|Out-Null; Start-Sleep -Milliseconds 400; Klik-XY $cx $cy; Start-Sleep -Milliseconds 400 }
-    else{ [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 150; [System.Windows.Forms.SendKeys]::SendWait('{DELETE}'); Start-Sleep -Milliseconds 200 }
-  }
+  [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 150; [System.Windows.Forms.SendKeys]::SendWait('{DELETE}'); Start-Sleep -Milliseconds 200
   [System.Windows.Forms.SendKeys]::SendWait((EscSK $wartosc)); Start-Sleep -Milliseconds 1300
   [System.Windows.Forms.SendKeys]::SendWait('{DOWN}'); Start-Sleep -Milliseconds 300
   [System.Windows.Forms.SendKeys]::SendWait('{ENTER}'); Start-Sleep -Milliseconds 300
@@ -170,47 +164,38 @@ function Wpisz-Combo($win,$target,$wartosc,$clearRegex){
 # AKCJA: Edit assignee -> pole "Support group" -> wpisz $grupa (nie zapisuje). Zwraca $true.
 function Akcja-Grupa($win,$grupa){
   Klik-EditAssignee $win | Out-Null
-  $t=Znajdz-Pole $win 'support group'
+  $t=Znajdz-Pole $win 'Support group'
   if(-not $t){ Write-Host "   [grupa] nie znalazlem pola 'Support group'" -ForegroundColor Red; return $false }
-  Wpisz-Combo $win $t $grupa 'clear support group'
+  Wpisz-Combo $win $t $grupa
   [console]::Beep(800,200); return $true
 }
 
 # AKCJA: Edit assignee -> pole "Person" -> wpisz $osoba (nie zapisuje). Zwraca $true.
 function Akcja-Osoba($win,$osoba){
   Klik-EditAssignee $win | Out-Null
-  $t=Znajdz-Pole $win 'person'
-  if(-not $t){ $t=Znajdz-Pole $win 'assignee' }
+  $t=Znajdz-Pole $win 'Person'
+  if(-not $t){ $t=Znajdz-Pole $win 'Assignee' }
   if(-not $t){ Write-Host "   [osoba] nie znalazlem pola 'Person'" -ForegroundColor Red; return $false }
-  Wpisz-Combo $win $t $osoba 'clear person'
+  Wpisz-Combo $win $t $osoba
   [console]::Beep(800,200); return $true
 }
 
 # AKCJA: wpisz komentarz $msg (nie wysyla). Zwraca $true.
 function Akcja-Komentarz($win,$msg){
-  $target=$null
-  foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $ct=$e.Current.ControlType.ProgrammaticName; if($ct -notmatch 'Edit|Document|Text'){ continue }; $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -match $KomentarzSlowa){ $target=$e; break } }
-  if(-not $target){ Write-Host "   [komentarz] nie znalazlem pola - pomijam" -ForegroundColor Red; return $false }
+  $target=Find1 $win $CTL::Edit "New note"
+  if(-not $target){ Write-Host "   [komentarz] nie znalazlem pola 'New note' - pomijam" -ForegroundColor Red; return $false }
   Zapewnij-Widok $target
   $r=$target.Current.BoundingRectangle
   [Win]::Click([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2)); Start-Sleep -Milliseconds 500
   [System.Windows.Forms.SendKeys]::SendWait((EscSK $msg)); Start-Sleep -Milliseconds 300
-  if($KomentarzPublic){ foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ if($e.Current.ControlType.ProgrammaticName -notmatch 'CheckBox'){ continue }; $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -match 'public|publiczn'){ try{ $tp=$e.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern); if($tp.Current.ToggleState.ToString() -ne 'On'){ $rr=$e.Current.BoundingRectangle; [Win]::Click([int]($rr.X+$rr.Width/2),[int]($rr.Y+$rr.Height/2)) } }catch{}; break } } }
+  if($KomentarzPublic){ $cb=Find1 $win $CTL::CheckBox "Public"; if($cb){ try{ $tp=$cb.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern); if($tp.Current.ToggleState.ToString() -ne 'On'){ Klik-El $cb|Out-Null } }catch{ Klik-El $cb|Out-Null } } }
   [console]::Beep(800,200); return $true
 }
-# jesli wyskoczy ostrzezenie "unsaved data / continue?" - kliknij kontynuuj
-function Obsluz-Ostrzezenie($win){
-  $warn=$false
-  foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -match 'unsaved data|niezapisane dane|want to continue'){ $warn=$true; break } }
-  if(-not $warn){ return }
-  foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ if($e.Current.ControlType.ProgrammaticName -notmatch 'Button'){ continue }; $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -match '^yes$|^tak$|continue|^ok$'){ $r=$e.Current.BoundingRectangle; if($r.Width -gt 0){ [Win]::Click([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2)); Start-Sleep -Milliseconds 600; return } } }
-}
+function Obsluz-Ostrzezenie($win){ }  # single-save wystarcza; zostawiam puste (bez skanu drzewa)
 
 # popup + auto-zapis
 function Potwierdz($tekst){ return [System.Windows.Forms.MessageBox]::Show($tekst+"`n`nTAK = zapisz i dalej    NIE = pomin (bez zapisu)    ANULUJ = STOP","Router - potwierdz",'YesNoCancel','Question') }
-function Klik-Przycisk($win,$regex){ foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ if($e.Current.ControlType.ProgrammaticName -notmatch 'Button'){ continue }; $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -match $regex){ $r=$e.Current.BoundingRectangle; if($r.Width -gt 0){ [Win]::Click([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2)); return $true } } }; return $false }
-function Zapisz-Ticket($win){ return (Klik-Przycisk $win '^zapisz$|^save$|zapisz zmiany|save changes|zapisz i') }
-function Wyslij-Komentarz($win){ return (Klik-Przycisk $win 'post|wyslij|^add$|dodaj notatke|^zapisz$|^save$') }
+function Zapisz-Ticket($win){ foreach($n in @('Save','Zapisz','Save changes','Save and close')){ $b=Find1 $win $CTL::Button $n; if($b){ Klik-El $b|Out-Null; return $true } }; return $false }
 function Zatwierdz($win,$opis,$saveFn){
   if(-not $TrybPopup){ Read-Host ("   >>> "+$opis+" - sprawdz, ZAPISZ recznie, ENTER"); return 'saved' }
   $odp=Potwierdz $opis
