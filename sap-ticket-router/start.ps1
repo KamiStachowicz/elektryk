@@ -21,7 +21,7 @@ $menu.Text='SAP Ticket Tool'; $menu.Width=320; $menu.Height=320; $menu.StartPosi
 $bd=New-Object System.Windows.Forms.Button; $bd.Text='DISPATCH (auto)'; $bd.Left=20; $bd.Top=20; $bd.Width=270; $bd.Height=68; $bd.Font=New-Object System.Drawing.Font('Segoe UI',13,[System.Drawing.FontStyle]::Bold); $bd.BackColor=[System.Drawing.Color]::FromArgb(46,120,210); $bd.ForeColor='White'; $bd.Add_Click({ $script:mode='dispatch'; $menu.Close() }); $menu.Controls.Add($bd)
 $bp=New-Object System.Windows.Forms.Button; $bp.Text='PANEL (kafelki - recznie)'; $bp.Left=20; $bp.Top=96; $bp.Width=270; $bp.Height=68; $bp.Font=New-Object System.Drawing.Font('Segoe UI',13,[System.Drawing.FontStyle]::Bold); $bp.BackColor=[System.Drawing.Color]::FromArgb(150,90,190); $bp.ForeColor='White'; $bp.Add_Click({ $script:mode='panel'; $menu.Close() }); $menu.Controls.Add($bp)
 $bg=New-Object System.Windows.Forms.Button; $bg.Text='GRC'; $bg.Left=20; $bg.Top=172; $bg.Width=270; $bg.Height=68; $bg.Font=New-Object System.Drawing.Font('Segoe UI',13,[System.Drawing.FontStyle]::Bold); $bg.BackColor=[System.Drawing.Color]::FromArgb(60,160,90); $bg.ForeColor='White'; $bg.Add_Click({ $script:mode='grc'; $menu.Close() }); $menu.Controls.Add($bg)
-[void]$menu.ShowDialog()
+[void]$menu.ShowDialog(); $menu.Dispose()
 if(-not $mode){ return }
 
 if($mode -eq 'grc'){
@@ -134,14 +134,34 @@ if($mode -eq 'panel'){
     Zapisz-Ticket $win | Out-Null; Start-Sleep -Milliseconds 700; Obsluz-Ostrzezenie $win | Out-Null
     [console]::Beep(800,200)
   }
+  $PlikKom = "$env:USERPROFILE\sap_panel_komentarz.txt"
+  function DodajKomentarz($tekst,$public){
+    if([string]::IsNullOrWhiteSpace($tekst)){ [System.Windows.Forms.MessageBox]::Show('Wpisz tresc komentarza.') | Out-Null; return }
+    Set-Content -Path $PlikKom -Value @($(if($public){'1'}else{'0'}), $tekst) -Encoding UTF8   # zapamietaj
+    $win=Get-EdgeWindow; if(-not $win){ [System.Windows.Forms.MessageBox]::Show('Nie znalazlem okna Edge.') | Out-Null; return }
+    $script:KomentarzPublic=[bool]$public; Akcja-Komentarz $win $tekst | Out-Null
+    Zapisz-Ticket $win | Out-Null; Start-Sleep -Milliseconds 700; Obsluz-Ostrzezenie $win | Out-Null
+    [console]::Beep(800,200)
+  }
   $pf=New-Object System.Windows.Forms.Form
-  $pf.Text='Ticket Panel'; $pf.Width=300; $pf.Height=(70+$Kafelki.Count*54); $pf.TopMost=$true; $pf.StartPosition='Manual'; $pf.Location=New-Object System.Drawing.Point(20,20); $pf.FormBorderStyle='FixedToolWindow'
+  $pf.Text='Ticket Panel'; $pf.Width=300; $pf.Height=(120+$Kafelki.Count*52+150); $pf.TopMost=$true; $pf.StartPosition='Manual'; $pf.Location=New-Object System.Drawing.Point(20,20); $pf.FormBorderStyle='FixedToolWindow'
+  $pf.Add_Shown({ $pf.TopMost=$true; $pf.Activate(); $pf.BringToFront() })
   $yy=12
   foreach($k in $Kafelki){
     $b=New-Object System.Windows.Forms.Button; $b.Text=$k.Text; $b.Width=264; $b.Height=44; $b.Left=12; $b.Top=$yy; $b.Tag=$k
     $b.Add_Click({ $this.Enabled=$false; try{ Wykonaj $this.Tag }finally{ $this.Enabled=$true } })
     $pf.Controls.Add($b); $yy+=52
   }
+  # ---- wlasny komentarz ----
+  $yy+=8
+  $lbl=New-Object System.Windows.Forms.Label; $lbl.Text='Wlasny komentarz:'; $lbl.Left=12; $lbl.Top=$yy; $lbl.Width=200; $lbl.Height=18; $pf.Controls.Add($lbl); $yy+=20
+  $tb=New-Object System.Windows.Forms.TextBox; $tb.Multiline=$true; $tb.Left=12; $tb.Top=$yy; $tb.Width=264; $tb.Height=64; $pf.Controls.Add($tb); $yy+=70
+  $cbPub=New-Object System.Windows.Forms.CheckBox; $cbPub.Text='Public (widzi zglaszajacy)'; $cbPub.Left=12; $cbPub.Top=$yy; $cbPub.Width=250; $pf.Controls.Add($cbPub); $yy+=26
+  # wczytaj zapamietany komentarz
+  if(Test-Path $PlikKom){ $ln=@(Get-Content $PlikKom); if($ln.Count -ge 1){ $cbPub.Checked=($ln[0] -eq '1') }; if($ln.Count -ge 2){ $tb.Text=($ln[1..($ln.Count-1)] -join "`r`n") } }
+  $bAdd=New-Object System.Windows.Forms.Button; $bAdd.Text='Dodaj komentarz'; $bAdd.Left=12; $bAdd.Top=$yy; $bAdd.Width=264; $bAdd.Height=40
+  $bAdd.Add_Click({ $this.Enabled=$false; try{ DodajKomentarz $tb.Text $cbPub.Checked }finally{ $this.Enabled=$true } })
+  $pf.Controls.Add($bAdd)
   [void]$pf.ShowDialog()
   return
 }
