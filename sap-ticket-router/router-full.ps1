@@ -41,6 +41,7 @@ $OBECNA         = "TOOLS-ACCESS-MANAGEMENT"   # obecna grupa (do namierzenia pol
 $KomentarzSlowa = 'notatk|komentarz|comment|\bnote\b|reply|add a note|wpisz|wiadomo|activity|aktywno'
 $TrybPopup = $true   # $true = popup Tak/Nie/Anuluj + auto-zapis; $false = pauza w konsoli (ENTER)
 $KomentarzPublic = $true   # zaznacz "Public" w notatce (zeby zglaszajacy widzial)
+$PomijajJuzPytane = $true  # $false = NIE pomijaj ticketow o ktore juz pytano (przetworz ponownie)
 $PlikLogu       = "$env:USERPROFILE\Documents\sap_router_log.csv"
 $PlikHistoria   = "$env:USERPROFILE\sap_router_historia.txt"   # numery juz odeslane (do wykrycia POWROTU)
 $HistoriaDni    = 90   # ile dni pamietac odeslane tickety (0 = bez limitu)
@@ -257,7 +258,7 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
   if($historia.ContainsKey($tkey)){
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  !!! POWROT - ten ticket juz byl odeslany! Cos nie tak - SPRAWDZ RECZNIE") -ForegroundColor Red
     [console]::Beep(400,400); $akcja='POWROT'; $powroty++
-  }elseif($juzPytano){
+  }elseif($PomijajJuzPytane -and $juzPytano){
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  JUZ PYTANO - czekam na odpowiedz (pomijam)") -ForegroundColor DarkYellow
     $akcja='waiting'; $waiting++
   }elseif($w.Nasz){
