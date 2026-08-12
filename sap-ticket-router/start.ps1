@@ -17,9 +17,10 @@ public class Win {
 # ---------------- MENU ----------------
 $mode=''
 $menu=New-Object System.Windows.Forms.Form
-$menu.Text='SAP Ticket Tool'; $menu.Width=320; $menu.Height=235; $menu.StartPosition='CenterScreen'; $menu.TopMost=$true; $menu.FormBorderStyle='FixedDialog'; $menu.MaximizeBox=$false; $menu.MinimizeBox=$false
-$bd=New-Object System.Windows.Forms.Button; $bd.Text='DISPATCH'; $bd.Left=20; $bd.Top=25; $bd.Width=270; $bd.Height=70; $bd.Font=New-Object System.Drawing.Font('Segoe UI',14,[System.Drawing.FontStyle]::Bold); $bd.BackColor=[System.Drawing.Color]::FromArgb(46,120,210); $bd.ForeColor='White'; $bd.Add_Click({ $script:mode='dispatch'; $menu.Close() }); $menu.Controls.Add($bd)
-$bg=New-Object System.Windows.Forms.Button; $bg.Text='GRC'; $bg.Left=20; $bg.Top=110; $bg.Width=270; $bg.Height=70; $bg.Font=New-Object System.Drawing.Font('Segoe UI',14,[System.Drawing.FontStyle]::Bold); $bg.BackColor=[System.Drawing.Color]::FromArgb(60,160,90); $bg.ForeColor='White'; $bg.Add_Click({ $script:mode='grc'; $menu.Close() }); $menu.Controls.Add($bg)
+$menu.Text='SAP Ticket Tool'; $menu.Width=320; $menu.Height=320; $menu.StartPosition='CenterScreen'; $menu.TopMost=$true; $menu.FormBorderStyle='FixedDialog'; $menu.MaximizeBox=$false; $menu.MinimizeBox=$false
+$bd=New-Object System.Windows.Forms.Button; $bd.Text='DISPATCH (auto)'; $bd.Left=20; $bd.Top=20; $bd.Width=270; $bd.Height=68; $bd.Font=New-Object System.Drawing.Font('Segoe UI',13,[System.Drawing.FontStyle]::Bold); $bd.BackColor=[System.Drawing.Color]::FromArgb(46,120,210); $bd.ForeColor='White'; $bd.Add_Click({ $script:mode='dispatch'; $menu.Close() }); $menu.Controls.Add($bd)
+$bp=New-Object System.Windows.Forms.Button; $bp.Text='PANEL (kafelki - recznie)'; $bp.Left=20; $bp.Top=96; $bp.Width=270; $bp.Height=68; $bp.Font=New-Object System.Drawing.Font('Segoe UI',13,[System.Drawing.FontStyle]::Bold); $bp.BackColor=[System.Drawing.Color]::FromArgb(150,90,190); $bp.ForeColor='White'; $bp.Add_Click({ $script:mode='panel'; $menu.Close() }); $menu.Controls.Add($bp)
+$bg=New-Object System.Windows.Forms.Button; $bg.Text='GRC'; $bg.Left=20; $bg.Top=172; $bg.Width=270; $bg.Height=68; $bg.Font=New-Object System.Drawing.Font('Segoe UI',13,[System.Drawing.FontStyle]::Bold); $bg.BackColor=[System.Drawing.Color]::FromArgb(60,160,90); $bg.ForeColor='White'; $bg.Add_Click({ $script:mode='grc'; $menu.Close() }); $menu.Controls.Add($bg)
 [void]$menu.ShowDialog()
 if(-not $mode){ return }
 
@@ -116,6 +117,34 @@ function Obsluz-Ostrzezenie($win){ Start-Sleep 500; foreach($n in @('^Yes$','^Ta
 function Potwierdz($tekst){ return [System.Windows.Forms.MessageBox]::Show($tekst+"`n`nTAK = zapisz i dalej    NIE = pomin (bez zapisu)    ANULUJ = STOP","Router - potwierdz",'YesNoCancel','Question') }
 function Zapisz-Ticket($win){ foreach($n in @('Save','Zapisz','Save changes','Save and close')){ $b=Find1 $win $CTL::Button $n; if($b){ Klik-El $b|Out-Null; return $true } }; return $false }
 function Zatwierdz($win,$opis,$saveFn){ if(-not $TrybPopup){ Read-Host ("   >>> "+$opis+" - sprawdz, ZAPISZ recznie, ENTER"); return 'saved' }; $odp=Potwierdz $opis; if($odp -eq 'Cancel'){ return 'stop' }; if($odp -eq 'Yes'){ Front $win; if(& $saveFn $win){ Write-Host "   zapisano" -ForegroundColor Green } else { Read-Host "   nie znalazlem przycisku zapisu - zrob recznie i ENTER" }; Start-Sleep 600; Obsluz-Ostrzezenie $win | Out-Null; return 'saved' }; Write-Host "   pominieto (bez zapisu)" -ForegroundColor DarkGray; return 'skip' }
+
+if($mode -eq 'panel'){
+  # ---- KAFELKI (edytuj/dodawaj) ----
+  $Kafelki = @(
+    @{ Text='Not our scope -> GSD'; Comment='Not our scope.'; Public=$false; Grupa='GLOBAL-SERVICEDESK'; Osoba='' }
+    @{ Text='Przypisz do GSD'; Comment=''; Public=$false; Grupa='GLOBAL-SERVICEDESK'; Osoba='' }
+    @{ Text='Komentarz: podaj system + user'; Comment='Hi, please provide the SAP system (e.g. P50) and the user ID (e.g. M0123456). Thanks.'; Public=$true; Grupa=''; Osoba='' }
+    @{ Text='Komentarz: podaj role'; Comment='Hi, please provide the role(s) required. Thanks.'; Public=$true; Grupa=''; Osoba='' }
+  )
+  function Wykonaj($k){
+    $win=Get-EdgeWindow; if(-not $win){ [System.Windows.Forms.MessageBox]::Show('Nie znalazlem okna Edge.') | Out-Null; return }
+    if($k.Comment){ $script:KomentarzPublic=[bool]$k.Public; Akcja-Komentarz $win $k.Comment | Out-Null }
+    if($k.Grupa){ Akcja-Grupa $win $k.Grupa | Out-Null }
+    if($k.Osoba){ Akcja-Osoba $win $k.Osoba | Out-Null }
+    Zapisz-Ticket $win | Out-Null; Start-Sleep -Milliseconds 700; Obsluz-Ostrzezenie $win | Out-Null
+    [console]::Beep(800,200)
+  }
+  $pf=New-Object System.Windows.Forms.Form
+  $pf.Text='Ticket Panel'; $pf.Width=300; $pf.Height=(70+$Kafelki.Count*54); $pf.TopMost=$true; $pf.StartPosition='Manual'; $pf.Location=New-Object System.Drawing.Point(20,20); $pf.FormBorderStyle='FixedToolWindow'
+  $yy=12
+  foreach($k in $Kafelki){
+    $b=New-Object System.Windows.Forms.Button; $b.Text=$k.Text; $b.Width=264; $b.Height=44; $b.Left=12; $b.Top=$yy; $b.Tag=$k
+    $b.Add_Click({ $this.Enabled=$false; try{ Wykonaj $this.Tag }finally{ $this.Enabled=$true } })
+    $pf.Controls.Add($b); $yy+=52
+  }
+  [void]$pf.ShowDialog()
+  return
+}
 
 Clear-Host
 Write-Host "SAP Ticket Router - DISPATCH" -ForegroundColor Cyan
