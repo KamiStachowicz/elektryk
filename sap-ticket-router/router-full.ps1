@@ -254,12 +254,19 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
   $brakSys=[string]::IsNullOrEmpty($w.System); $brakUser=[string]::IsNullOrEmpty($w.UserId); $brakRole=(($w.Role.Count -eq 0) -and (-not $w.RefUser))
   $brakiAll=@(); if($brakSys){$brakiAll+='system'}; if($brakUser){$brakiAll+='user'}; if($brakRole){$brakiAll+='role'}
   $juzPytano = ($txt -match 'please provide')
+  $powrot = $historia.ContainsKey($tkey)
+  $skipWaiting = $false
+  if((-not $powrot) -and $juzPytano -and $PomijajJuzPytane){
+    $o=[System.Windows.Forms.MessageBox]::Show("Ticket "+$tkey+" - juz pytano/robione.`n`nTAK = pomin     NIE = przetworz mimo to     ANULUJ = STOP","Router - juz pytano",'YesNoCancel','Question')
+    if($o -eq 'Cancel'){ break }
+    if($o -eq 'Yes'){ $skipWaiting=$true }
+  }
   $akcja=''
-  if($historia.ContainsKey($tkey)){
+  if($powrot){
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  !!! POWROT - ten ticket juz byl odeslany! Cos nie tak - SPRAWDZ RECZNIE") -ForegroundColor Red
     [console]::Beep(400,400); $akcja='POWROT'; $powroty++
-  }elseif($PomijajJuzPytane -and $juzPytano){
-    Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  JUZ PYTANO - czekam na odpowiedz (pomijam)") -ForegroundColor DarkYellow
+  }elseif($skipWaiting){
+    Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  JUZ PYTANO - pominiete (Twoj wybor)") -ForegroundColor DarkYellow
     $akcja='waiting'; $waiting++
   }elseif($w.Nasz){
     if($w.Mars){
