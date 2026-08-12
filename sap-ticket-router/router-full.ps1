@@ -138,7 +138,7 @@ function Klik-El($el){ $r=$el.Current.BoundingRectangle; if($r.Width -le 0){ ret
 function Front($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle)|Out-Null; Start-Sleep -Milliseconds 350 }
 function Do-Widoku($el){ try{ ($el.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern)).ScrollIntoView() }catch{} }
 function Przewin-Dol($vd){ if($vd.Count -gt 0){ $r=$vd[$vd.Count-1].Current.BoundingRectangle; [Win]::Wheel([int]($r.X+$r.Width/2),[int]($r.Y),-700) } }
-function Zapewnij-Widok($el){ try{ ($el.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern)).ScrollIntoView() }catch{}; Start-Sleep -Milliseconds 500; $sh=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height; for($k=0;$k -lt 8;$k++){ $r=$el.Current.BoundingRectangle; if($r.Width -le 0){ Start-Sleep -Milliseconds 300; continue }; $cy=$r.Y+$r.Height/2; if($cy -gt 110 -and $cy -lt ($sh-160)){ break }; $wy=[int]($sh/2); if($cy -ge ($sh-160)){ [Win]::Wheel([int]($r.X+10),$wy,-160) } else { [Win]::Wheel([int]($r.X+10),$wy,160) }; Start-Sleep -Milliseconds 450 } }
+function Zapewnij-Widok($el){ try{ ($el.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern)).ScrollIntoView() }catch{}; Start-Sleep -Milliseconds 500; $sw=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width; $sh=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height; $wx=[int]($sw/2); $wy=[int]($sh/2); for($k=0;$k -lt 14;$k++){ $r=$el.Current.BoundingRectangle; if($r.Width -le 0){ Start-Sleep -Milliseconds 300; continue }; $cy=$r.Y+$r.Height/2; if($cy -gt 120 -and $cy -lt ($sh-200)){ break }; if($cy -ge ($sh-200)){ [Win]::Wheel($wx,$wy,-400) } else { [Win]::Wheel($wx,$wy,400) }; Start-Sleep -Milliseconds 400 } }
 function Find-ClearX($win,$field){ $fr=$field.Current.BoundingRectangle; foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ if($e.Current.ControlType.ProgrammaticName -notmatch 'Button'){ continue }; $br=$e.Current.BoundingRectangle; if($br.Width -le 0 -or $br.Width -gt 45){ continue }; if([Math]::Abs(($br.Y+$br.Height/2)-($fr.Y+$fr.Height/2)) -lt 22 -and $br.X -ge ($fr.X-5) -and $br.X -le ($fr.X+$fr.Width+70)){ return $e } }; return $null }
 function Kopiuj-Strone($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle)|Out-Null; Start-Sleep -Milliseconds 350; [System.Windows.Forms.SendKeys]::SendWait('{TAB}'); Start-Sleep -Milliseconds 250; [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 200; [System.Windows.Forms.SendKeys]::SendWait('^c'); Start-Sleep -Milliseconds 400; return (Get-Clipboard -Raw) }
 # czyta ticket = clipboard (Ctrl+A lapie tresc + komentarze). Bez skanu drzewa.
@@ -159,6 +159,8 @@ function Wpisz-Combo($win,$target,$wartosc){
   Front $win
   Zapewnij-Widok $target
   $fr=$target.Current.BoundingRectangle; $cx=[int]($fr.X+$fr.Width/2); $cy=[int]($fr.Y+$fr.Height/2)
+  $sh=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height
+  if($cy -lt 60 -or $cy -gt ($sh-90)){ Write-Host ("   [pole poza ekranem y="+$cy+" - NIE klikam (zeby nie minimalizowac)]") -ForegroundColor Red; return $false }
   Front $win
   Klik-XY $cx $cy; Start-Sleep -Milliseconds 400
   [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 150; [System.Windows.Forms.SendKeys]::SendWait('{DELETE}'); Start-Sleep -Milliseconds 200
@@ -193,6 +195,8 @@ function Akcja-Komentarz($win,$msg){
   if(-not $target){ Write-Host "   [komentarz] nie znalazlem pola 'New note' - pomijam" -ForegroundColor Red; return $false }
   Zapewnij-Widok $target
   $r=$target.Current.BoundingRectangle
+  $shC=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height; $cyC=[int]($r.Y+$r.Height/2)
+  if($cyC -lt 60 -or $cyC -gt ($shC-90)){ Write-Host "   [komentarz poza ekranem - NIE klikam (zeby nie minimalizowac)]" -ForegroundColor Red; return $false }
   Front $win
   [Win]::Click([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2)); Start-Sleep -Milliseconds 500
   [System.Windows.Forms.SendKeys]::SendWait((EscSK $msg)); Start-Sleep -Milliseconds 300
