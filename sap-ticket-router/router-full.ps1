@@ -120,7 +120,8 @@ function Przetworz($txt){
  foreach($m in [regex]::Matches($txt,'Business\s*Role\s*:+\s*([^\r\n]+)','IgnoreCase')){ $v=$m.Groups[1].Value.Trim(); if($v -and ($role -notcontains $v)){ $role+=$v } }
  $userName=''; if($txt -match '(?:#User\s*Full\s*Name|Full\s*Name)\s*:+\s*([^\r\n]+)'){ $userName=$Matches[1].Trim() }
  $userId=''; if($txt -match '\b[EM]\d{7}\b'){ $userId=$Matches[0] }
- return [pscustomobject]@{ System=$system; Team=$team; Nasz=$czyNasz; Mars=$mars; Regula=$regula; Role=$role; UserName=$userName; UserId=$userId } }
+ $refUser=[bool]($txt -match 'reference user|\bref\.?\s*user\b|copy (the )?access from|copy from user|copy roles from|same (access|rights|roles) as|access like|like user\b')
+ return [pscustomobject]@{ System=$system; Team=$team; Nasz=$czyNasz; Mars=$mars; Regula=$regula; Role=$role; RefUser=$refUser; UserName=$userName; UserId=$userId } }
 
 function Get-EdgeWindow{ foreach($w in $AE::RootElement.FindAll($TS::Children,$TRUE1)){ if($w.Current.Name -match 'Edge'){ return $w } }; return $null }
 function Get-ViewDetails($win){ $l=@(); foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $nm=(ToAscii $e.Current.Name).ToLower(); if( ($nm -match 'wyswietl' -and $nm -match 'szczeg') -or ($nm -match 'view' -and $nm -match 'detail') ){ $l+=$e } }; return $l }
@@ -134,6 +135,8 @@ function Przewin-Dol($vd){ if($vd.Count -gt 0){ $r=$vd[$vd.Count-1].Current.Boun
 function Zapewnij-Widok($el){ try{ ($el.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern)).ScrollIntoView() }catch{}; Start-Sleep -Milliseconds 500; $sh=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height; for($k=0;$k -lt 8;$k++){ $r=$el.Current.BoundingRectangle; if($r.Width -le 0){ Start-Sleep -Milliseconds 300; continue }; $cy=$r.Y+$r.Height/2; if($cy -gt 110 -and $cy -lt ($sh-160)){ break }; $wy=[int]($sh/2); if($cy -ge ($sh-160)){ [Win]::Wheel([int]($r.X+10),$wy,-160) } else { [Win]::Wheel([int]($r.X+10),$wy,160) }; Start-Sleep -Milliseconds 450 } }
 function Find-ClearX($win,$field){ $fr=$field.Current.BoundingRectangle; foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ if($e.Current.ControlType.ProgrammaticName -notmatch 'Button'){ continue }; $br=$e.Current.BoundingRectangle; if($br.Width -le 0 -or $br.Width -gt 45){ continue }; if([Math]::Abs(($br.Y+$br.Height/2)-($fr.Y+$fr.Height/2)) -lt 22 -and $br.X -ge ($fr.X-5) -and $br.X -le ($fr.X+$fr.Width+70)){ return $e } }; return $null }
 function Kopiuj-Strone($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle)|Out-Null; Start-Sleep -Milliseconds 300; [System.Windows.Forms.SendKeys]::SendWait('{TAB}'); Start-Sleep -Milliseconds 250; [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 200; [System.Windows.Forms.SendKeys]::SendWait('^c'); Start-Sleep -Milliseconds 400; return (Get-Clipboard -Raw) }
+# czyta ticket = clipboard (Ctrl+A) + teksty z UIA (panel Activity/komentarze)
+function Czytaj-Strone($win){ $c=Kopiuj-Strone $win; $sb=New-Object System.Text.StringBuilder; foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $ct=$e.Current.ControlType.ProgrammaticName; if($ct -match 'Text|Document|Edit'){ $nm=$e.Current.Name; if($nm){ [void]$sb.Append($nm); [void]$sb.Append("`n") }; $v=Get-Val $e; if($v){ [void]$sb.Append($v); [void]$sb.Append("`n") } } }; return ($c+"`n"+$sb.ToString()) }
 function Wstecz($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle)|Out-Null; Start-Sleep -Milliseconds 200; [System.Windows.Forms.SendKeys]::SendWait('%{LEFT}') }
 
 # AKCJA: Edit -> pole grupy -> wpisz $grupa (nie zapisuje). Zwraca $true.
@@ -142,6 +145,7 @@ function Akcja-Grupa($win,$grupa){
   if($edit){ Klik-El $edit|Out-Null; Start-Sleep -Milliseconds 1600 }
   $szukaj=$OBECNA.ToLower(); $target=$null
   foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $nm=(ToAscii $e.Current.Name).ToLower(); $val=(ToAscii (Get-Val $e)).ToLower(); if( ($nm -match $szukaj) -or ($val -match $szukaj) ){ $ct=$e.Current.ControlType.ProgrammaticName; if(-not $target){ $target=$e }; if($ct -match 'Edit|ComboBox'){ $target=$e; break } } }
+  if(-not $target){ foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $ct=$e.Current.ControlType.ProgrammaticName; if($ct -notmatch 'Edit|ComboBox'){ continue }; $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -match 'assignee support group|support group|grupa przypisan'){ $target=$e; break } } }
   if(-not $target){ Write-Host "   [akcja] nie znalazlem pola grupy - pomijam" -ForegroundColor Red; return $false }
   Zapewnij-Widok $target
   $fr=$target.Current.BoundingRectangle; $cx=[int]($fr.X+$fr.Width/2); $cy=[int]($fr.Y+$fr.Height/2)
@@ -243,8 +247,8 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
   $r=$target.Current.BoundingRectangle; if($r.Width -le 0){ continue }
   Klik-XY ([int]($r.X+$r.Width/2)) ([int]($r.Y+$r.Height/2)); Start-Sleep -Milliseconds $CzasLadowania
 
-  $win=Get-EdgeWindow; $txt=Kopiuj-Strone $win; $w=Przetworz $txt
-  $brakSys=[string]::IsNullOrEmpty($w.System); $brakUser=[string]::IsNullOrEmpty($w.UserId); $brakRole=($w.Role.Count -eq 0)
+  $win=Get-EdgeWindow; $txt=Czytaj-Strone $win; $w=Przetworz $txt
+  $brakSys=[string]::IsNullOrEmpty($w.System); $brakUser=[string]::IsNullOrEmpty($w.UserId); $brakRole=(($w.Role.Count -eq 0) -and (-not $w.RefUser))
   $brakiAll=@(); if($brakSys){$brakiAll+='system'}; if($brakUser){$brakiAll+='user'}; if($brakRole){$brakiAll+='role'}
   $juzPytano = ($txt -match 'please provide')
   $akcja=''
