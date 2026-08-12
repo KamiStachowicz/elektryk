@@ -139,44 +139,50 @@ function Kopiuj-Strone($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.Na
 function Czytaj-Strone($win){ $c=Kopiuj-Strone $win; $sb=New-Object System.Text.StringBuilder; foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $ct=$e.Current.ControlType.ProgrammaticName; if($ct -match 'Text|Document|Edit'){ $nm=$e.Current.Name; if($nm){ [void]$sb.Append($nm); [void]$sb.Append("`n") }; $v=Get-Val $e; if($v){ [void]$sb.Append($v); [void]$sb.Append("`n") } } }; return ($c+"`n"+$sb.ToString()) }
 function Wstecz($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle)|Out-Null; Start-Sleep -Milliseconds 200; [System.Windows.Forms.SendKeys]::SendWait('%{LEFT}') }
 
-# AKCJA: Edit -> pole grupy -> wpisz $grupa (nie zapisuje). Zwraca $true.
-function Akcja-Grupa($win,$grupa){
-  $edit=Find-El $win @('edytuj'); if(-not $edit){ $edit=Find-El $win @('^edit') }; if(-not $edit){ $edit=Find-El $win @('edit') }
-  if($edit){ Klik-El $edit|Out-Null; Start-Sleep -Milliseconds 1600 }
-  $szukaj=$OBECNA.ToLower(); $target=$null
-  foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $nm=(ToAscii $e.Current.Name).ToLower(); $val=(ToAscii (Get-Val $e)).ToLower(); if( ($nm -match $szukaj) -or ($val -match $szukaj) ){ $ct=$e.Current.ControlType.ProgrammaticName; if(-not $target){ $target=$e }; if($ct -match 'Edit|ComboBox'){ $target=$e; break } } }
-  if(-not $target){ foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $ct=$e.Current.ControlType.ProgrammaticName; if($ct -notmatch 'Edit|ComboBox'){ continue }; $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -match 'assignee support group|support group|grupa przypisan'){ $target=$e; break } } }
-  if(-not $target){ Write-Host "   [akcja] nie znalazlem pola grupy - pomijam" -ForegroundColor Red; return $false }
+# klik "Edit assignee" (otwiera edytor grupy/osoby w SmartIT)
+function Klik-EditAssignee($win){
+  $edit=$null
+  foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ if($e.Current.ControlType.ProgrammaticName -notmatch 'Button|Hyperlink'){ continue }; $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -match 'edit assignee'){ $edit=$e; break } }
+  if(-not $edit){ foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ if($e.Current.ControlType.ProgrammaticName -notmatch 'Button|Hyperlink'){ continue }; $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -match 'edytuj|^edit'){ $edit=$e; break } } }
+  if($edit){ Klik-El $edit|Out-Null; Start-Sleep -Milliseconds 1800; return $true }
+  return $false
+}
+# znajdz pole (ComboBox/Edit) po dokladnej nazwie
+function Znajdz-Pole($win,$nazwa){
+  foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $ct=$e.Current.ControlType.ProgrammaticName; if($ct -notmatch 'ComboBox|Edit'){ continue }; $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -eq $nazwa){ return $e } }
+  return $null
+}
+# przewin do pola, wyczysc (przyciskiem clear jesli jest), wpisz i wybierz z podpowiedzi
+function Wpisz-Combo($win,$target,$wartosc,$clearRegex){
   Zapewnij-Widok $target
   $fr=$target.Current.BoundingRectangle; $cx=[int]($fr.X+$fr.Width/2); $cy=[int]($fr.Y+$fr.Height/2)
-  Klik-XY $cx $cy; Start-Sleep -Milliseconds 350
-  $x=Find-ClearX $win $target
-  if($x){ Klik-El $x|Out-Null; Start-Sleep -Milliseconds 350 } else { [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 150; [System.Windows.Forms.SendKeys]::SendWait('{DELETE}'); Start-Sleep -Milliseconds 250 }
-  Klik-XY ($fr.X+10) ($fr.Y-28); Start-Sleep -Milliseconds 350
   Klik-XY $cx $cy; Start-Sleep -Milliseconds 400
-  [System.Windows.Forms.SendKeys]::SendWait((EscSK $grupa)); Start-Sleep -Milliseconds 1000
-  [System.Windows.Forms.SendKeys]::SendWait('{DOWN}'); Start-Sleep -Milliseconds 250
+  if($clearRegex){
+    $clr=$null; foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ if($e.Current.ControlType.ProgrammaticName -notmatch 'Button'){ continue }; $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -match $clearRegex){ $clr=$e; break } }
+    if($clr){ Klik-El $clr|Out-Null; Start-Sleep -Milliseconds 400; Klik-XY $cx $cy; Start-Sleep -Milliseconds 400 }
+    else{ [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 150; [System.Windows.Forms.SendKeys]::SendWait('{DELETE}'); Start-Sleep -Milliseconds 200 }
+  }
+  [System.Windows.Forms.SendKeys]::SendWait((EscSK $wartosc)); Start-Sleep -Milliseconds 1300
+  [System.Windows.Forms.SendKeys]::SendWait('{DOWN}'); Start-Sleep -Milliseconds 300
   [System.Windows.Forms.SendKeys]::SendWait('{ENTER}'); Start-Sleep -Milliseconds 300
+}
+
+# AKCJA: Edit assignee -> pole "Support group" -> wpisz $grupa (nie zapisuje). Zwraca $true.
+function Akcja-Grupa($win,$grupa){
+  Klik-EditAssignee $win | Out-Null
+  $t=Znajdz-Pole $win 'support group'
+  if(-not $t){ Write-Host "   [grupa] nie znalazlem pola 'Support group'" -ForegroundColor Red; return $false }
+  Wpisz-Combo $win $t $grupa 'clear support group'
   [console]::Beep(800,200); return $true
 }
 
-# AKCJA: Edit -> pole "Assignee" (osoba) -> wpisz $osoba (nie zapisuje). Zwraca $true.
+# AKCJA: Edit assignee -> pole "Person" -> wpisz $osoba (nie zapisuje). Zwraca $true.
 function Akcja-Osoba($win,$osoba){
-  $edit=Find-El $win @('edytuj'); if(-not $edit){ $edit=Find-El $win @('^edit') }; if(-not $edit){ $edit=Find-El $win @('edit') }
-  if($edit){ Klik-El $edit|Out-Null; Start-Sleep -Milliseconds 1600 }
-  $target=$null
-  foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $ct=$e.Current.ControlType.ProgrammaticName; if($ct -notmatch 'Edit|ComboBox'){ continue }; $nm=(ToAscii $e.Current.Name).ToLower(); if( ($nm -match 'assignee|przypisan|assigned to|osoba') -and ($nm -notmatch 'group|grupa') ){ $target=$e; break } }
-  if(-not $target){ Write-Host "   [osoba] nie znalazlem pola Assignee - pomijam" -ForegroundColor Red; return $false }
-  Zapewnij-Widok $target
-  $fr=$target.Current.BoundingRectangle; $cx=[int]($fr.X+$fr.Width/2); $cy=[int]($fr.Y+$fr.Height/2)
-  Klik-XY $cx $cy; Start-Sleep -Milliseconds 350
-  $x=Find-ClearX $win $target
-  if($x){ Klik-El $x|Out-Null; Start-Sleep -Milliseconds 350 } else { [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 150; [System.Windows.Forms.SendKeys]::SendWait('{DELETE}'); Start-Sleep -Milliseconds 250 }
-  Klik-XY ($fr.X+10) ($fr.Y-28); Start-Sleep -Milliseconds 350
-  Klik-XY $cx $cy; Start-Sleep -Milliseconds 400
-  [System.Windows.Forms.SendKeys]::SendWait((EscSK $osoba)); Start-Sleep -Milliseconds 1000
-  [System.Windows.Forms.SendKeys]::SendWait('{DOWN}'); Start-Sleep -Milliseconds 250
-  [System.Windows.Forms.SendKeys]::SendWait('{ENTER}'); Start-Sleep -Milliseconds 300
+  Klik-EditAssignee $win | Out-Null
+  $t=Znajdz-Pole $win 'person'
+  if(-not $t){ $t=Znajdz-Pole $win 'assignee' }
+  if(-not $t){ Write-Host "   [osoba] nie znalazlem pola 'Person'" -ForegroundColor Red; return $false }
+  Wpisz-Combo $win $t $osoba 'clear person'
   [console]::Beep(800,200); return $true
 }
 
