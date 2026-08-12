@@ -144,7 +144,7 @@ if($mode -eq 'panel'){
     [console]::Beep(800,200)
   }
   $pf=New-Object System.Windows.Forms.Form
-  $pf.Text='Ticket Panel'; $pf.Width=300; $pf.Height=(120+$Kafelki.Count*52+150); $pf.TopMost=$true; $pf.StartPosition='Manual'; $pf.Location=New-Object System.Drawing.Point(20,20); $pf.FormBorderStyle='FixedToolWindow'
+  $pf.Text='Ticket Panel'; $pf.Width=300; $pf.Height=(120+$Kafelki.Count*52+205); $pf.TopMost=$true; $pf.StartPosition='Manual'; $pf.Location=New-Object System.Drawing.Point(20,20); $pf.FormBorderStyle='FixedSingle'; $pf.ControlBox=$true; $pf.MaximizeBox=$false; $pf.MinimizeBox=$false
   $pf.Add_Shown({ $pf.TopMost=$true; $pf.Activate(); $pf.BringToFront() })
   $yy=12
   foreach($k in $Kafelki){
@@ -161,7 +161,8 @@ if($mode -eq 'panel'){
   if(Test-Path $PlikKom){ $ln=@(Get-Content $PlikKom); if($ln.Count -ge 1){ $cbPub.Checked=($ln[0] -eq '1') }; if($ln.Count -ge 2){ $tb.Text=($ln[1..($ln.Count-1)] -join "`r`n") } }
   $bAdd=New-Object System.Windows.Forms.Button; $bAdd.Text='Dodaj komentarz'; $bAdd.Left=12; $bAdd.Top=$yy; $bAdd.Width=264; $bAdd.Height=40
   $bAdd.Add_Click({ $this.Enabled=$false; try{ DodajKomentarz $tb.Text $cbPub.Checked }finally{ $this.Enabled=$true } })
-  $pf.Controls.Add($bAdd)
+  $pf.Controls.Add($bAdd); $yy+=48
+  $bClose=New-Object System.Windows.Forms.Button; $bClose.Text='Zamknij'; $bClose.Left=12; $bClose.Top=$yy; $bClose.Width=264; $bClose.Height=32; $bClose.Add_Click({ $pf.Close() }); $pf.Controls.Add($bClose)
   [void]$pf.ShowDialog()
   return
 }
