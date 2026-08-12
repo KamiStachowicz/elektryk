@@ -73,8 +73,9 @@ public class Win {
 $AE=[System.Windows.Automation.AutomationElement]; $TS=[System.Windows.Automation.TreeScope]; $TRUE1=[System.Windows.Automation.Condition]::TrueCondition
 $WALK=[System.Windows.Automation.TreeWalker]::ControlViewWalker
 $CTL=[System.Windows.Automation.ControlType]
-# SZYBKIE wyszukiwanie: FindFirst po ControlType+Name (silnik UIA, nie skan w PS)
-function Find1($root,$ctype,$name){ $c=New-Object System.Windows.Automation.AndCondition((New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty,$ctype)),(New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty,$name))); return $root.FindFirst($TS::Descendants,$c) }
+# SZYBKIE + ODPORNE: FindAll tylko dla danego typu kontrolki (silnik filtruje -> maly zbior),
+# potem dopasowanie nazwy "zawiera" (bez czulosci na wielkosc liter).
+function Find1($root,$ctype,$substr){ $cond=New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty,$ctype); foreach($e in $root.FindAll($TS::Descendants,$cond)){ $nm=(ToAscii $e.Current.Name); if($nm -match $substr){ return $e } }; return $null }
 
 function ToAscii($s){ if(-not $s){return ''}; $n=$s.Normalize([Text.NormalizationForm]::FormD); -join($n.ToCharArray()|Where-Object{[Globalization.CharUnicodeInfo]::GetUnicodeCategory($_) -ne 'NonSpacingMark'}) }
 function EscSK($s){ $r=''; foreach($c in $s.ToCharArray()){ if('+^%~(){}[]'.Contains([string]$c)){ $r+='{'+$c+'}' } else { $r+=$c } }; return $r }
@@ -142,14 +143,15 @@ function Kopiuj-Strone($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.Na
 function Czytaj-Strone($win){ return (Kopiuj-Strone $win) }
 function Wstecz($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle)|Out-Null; Start-Sleep -Milliseconds 200; [System.Windows.Forms.SendKeys]::SendWait('%{LEFT}') }
 
-# klik "Edit assignee" (otwiera edytor grupy/osoby) - SZYBKO
+# klik "Edit assignee" (otwiera edytor grupy/osoby)
 function Klik-EditAssignee($win){
-  $edit=Find1 $win $CTL::Button "Edit assignee"; if(-not $edit){ $edit=Find1 $win $CTL::Hyperlink "Edit assignee" }
-  if($edit){ Klik-El $edit|Out-Null; Start-Sleep -Milliseconds 1800; return $true }
-  return $false
+  $edit=Find1 $win $CTL::Button 'edit assignee'; if(-not $edit){ $edit=Find1 $win $CTL::Hyperlink 'edit assignee' }
+  if(-not $edit){ $edit=Find1 $win $CTL::Button 'edit' }
+  if($edit){ Write-Host ("   [edit] klikam '"+$edit.Current.Name+"'") -ForegroundColor DarkGray; Klik-El $edit|Out-Null; Start-Sleep -Milliseconds 2000; return $true }
+  Write-Host "   [edit] nie znalazlem 'Edit assignee'" -ForegroundColor Red; return $false
 }
-# znajdz pole ComboBox/Edit po dokladnej nazwie - SZYBKO
-function Znajdz-Pole($win,$nazwa){ $e=Find1 $win $CTL::ComboBox $nazwa; if(-not $e){ $e=Find1 $win $CTL::Edit $nazwa }; return $e }
+# znajdz pole ComboBox/Edit po nazwie (z retry - edytor moze sie renderowac chwile)
+function Znajdz-Pole($win,$substr){ for($i=0;$i -lt 5;$i++){ $e=Find1 $win $CTL::ComboBox $substr; if(-not $e){ $e=Find1 $win $CTL::Edit $substr }; if($e){ return $e }; Start-Sleep -Milliseconds 700 }; return $null }
 # przewin do pola, wyczysc (Ctrl+A+Del), wpisz, wybierz z podpowiedzi
 function Wpisz-Combo($win,$target,$wartosc){
   Zapewnij-Widok $target
