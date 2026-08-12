@@ -49,10 +49,10 @@ $HistoriaDni    = 90   # ile dni pamietac odeslane tickety (0 = bez limitu)
 $NaszeExact   = @('P4M','K4M','Q4M','P50','PGT','P02','PGE','G4M','D4M','M4M','T4M','E50','M50','Q50')
 $NaszeWzorce  = @('^B.P$','^.TM$','^.EW$','^IA.$')   # BxP, xTM, xEW, IAx
 $NaszeWyjatki = @('BKP','BEP')                        # NIE nasze - ida wg tabeli
-# KOMPLETNE tickety (system+user+rola) -> Ty (pod automatyzacje GRC)
-$Ja = 'M0235728'
-# NIEKOMPLETNE -> rotacja miedzy kolegami
-$Koledzy = @('M0076236','M0204125','M0227642','M0234670')   # Milosz (M0201404) usuniety
+# MARS -> zawsze Kinga; Kamil (M0235728) NIE jest przypisywany do ticketow
+$Kinga = 'M0076236'
+# Rotacja miedzy kolegami (kompletne bez komentarza, niekompletne + komentarz)
+$Koledzy = @('M0076236','M0204125','M0227642','M0234670')   # bez Milosza i bez Kamila
 $PlikRotacji = "$env:USERPROFILE\sap_router_rotacja.txt"
 $MaxTicketow    = 50
 $CzasLadowania  = 2500
@@ -108,8 +108,9 @@ function Zespol-Dla($txt){
 }
 
 function Przetworz($txt){
+ $mars=[bool]($txt -match '\bMARS\b')
  $nasz=NaszSystem $txt
- if($nasz){ $team=''; $system=$nasz; $regula='NASZE'; $czyNasz=$true }
+ if($mars -or $nasz){ $team=''; $system=$(if($nasz){$nasz}elseif($mars){'MARS'}else{''}); $regula=$(if($mars){'MARS'}else{'NASZE'}); $czyNasz=$true }
  else{
    $zd=Zespol-Dla $txt; $team=$zd.Team; $system=($zd.Sys -join ','); $regula=$zd.Regula; $czyNasz=$false
    if(-not $system){ foreach($e in $Etykiety){ if($txt -match $e){ $system=$Matches[1].ToUpper(); break } } }
@@ -119,7 +120,7 @@ function Przetworz($txt){
  foreach($m in [regex]::Matches($txt,'Business\s*Role\s*:+\s*([^\r\n]+)','IgnoreCase')){ $v=$m.Groups[1].Value.Trim(); if($v -and ($role -notcontains $v)){ $role+=$v } }
  $userName=''; if($txt -match '(?:#User\s*Full\s*Name|Full\s*Name)\s*:+\s*([^\r\n]+)'){ $userName=$Matches[1].Trim() }
  $userId=''; if($txt -match '\b[EM]\d{7}\b'){ $userId=$Matches[0] }
- return [pscustomobject]@{ System=$system; Team=$team; Nasz=$czyNasz; Regula=$regula; Role=$role; UserName=$userName; UserId=$userId } }
+ return [pscustomobject]@{ System=$system; Team=$team; Nasz=$czyNasz; Mars=$mars; Regula=$regula; Role=$role; UserName=$userName; UserId=$userId } }
 
 function Get-EdgeWindow{ foreach($w in $AE::RootElement.FindAll($TS::Children,$TRUE1)){ if($w.Current.Name -match 'Edge'){ return $w } }; return $null }
 function Get-ViewDetails($win){ $l=@(); foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $nm=(ToAscii $e.Current.Name).ToLower(); if( ($nm -match 'wyswietl' -and $nm -match 'szczeg') -or ($nm -match 'view' -and $nm -match 'detail') ){ $l+=$e } }; return $l }
@@ -254,21 +255,33 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  JUZ PYTANO - czekam na odpowiedz (pomijam)") -ForegroundColor DarkYellow
     $akcja='waiting'; $waiting++
   }elseif($w.Nasz){
-    $braki=@(); if($brakUser){$braki+='user'}; if($brakRole){$braki+='role'}
-    if($braki.Count -eq 0){
-      Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  NASZE KOMPLETNY -> "+$Ja) -ForegroundColor Cyan
-      Write-Host ("   ROLE: "+($w.Role -join ', '))
-      $win=Get-EdgeWindow
-      if(Akcja-Osoba $win $Ja){ $rz=Zatwierdz $win ("Przypisac do CIEBIE ("+$Ja+")?") { param($ww) Zapisz-Ticket $ww }; if($rz -eq 'stop'){ break }; if($rz -ne 'skip'){ $akcja='nasz-complete'; $nasze++ } else { $akcja='nasz-skip' } }
-    }else{
-      $osoba=Nastepna-Osoba; $msg=Komentarz-Tresc $braki
-      Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  NASZE NIEKOMPLETNY (brak: "+($braki -join '+')+") -> "+$osoba) -ForegroundColor Yellow
+    if($w.Mars){
+      $osoba=$Kinga
+      Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  MARS -> Kinga ("+$osoba+")") -ForegroundColor Cyan
       $win=Get-EdgeWindow; Akcja-Osoba $win $osoba | Out-Null
-      $win=Get-EdgeWindow; Akcja-Komentarz $win $msg | Out-Null
-      $rz=Zatwierdz $win ("Przypisz do "+$osoba+" + komentarz - zapisac?") { param($ww) Zapisz-Ticket $ww }
+      $rz=Zatwierdz $win ("MARS - przypisac do Kingi ("+$osoba+")?") { param($ww) Zapisz-Ticket $ww }
       if($rz -eq 'stop'){ break }
-      if($rz -ne 'skip'){ $commented++; $nasze++ }
-      $akcja='nasz-incomplete'
+      if($rz -ne 'skip'){ $akcja='mars'; $nasze++ }
+    }else{
+      $braki=@(); if($brakUser){$braki+='user'}; if($brakRole){$braki+='role'}
+      $osoba=Nastepna-Osoba
+      if($braki.Count -eq 0){
+        Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  NASZE KOMPLETNY -> "+$osoba) -ForegroundColor Cyan
+        if($w.Role.Count -gt 0){ Write-Host ("   ROLE: "+($w.Role -join ', ')) }
+        $win=Get-EdgeWindow; Akcja-Osoba $win $osoba | Out-Null
+        $rz=Zatwierdz $win ("Przypisac do "+$osoba+"?") { param($ww) Zapisz-Ticket $ww }
+        if($rz -eq 'stop'){ break }
+        if($rz -ne 'skip'){ $akcja='nasz-complete'; $nasze++ }
+      }else{
+        $msg=Komentarz-Tresc $braki
+        Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  NASZE NIEKOMPLETNY (brak: "+($braki -join '+')+") -> "+$osoba) -ForegroundColor Yellow
+        $win=Get-EdgeWindow; Akcja-Osoba $win $osoba | Out-Null
+        $win=Get-EdgeWindow; Akcja-Komentarz $win $msg | Out-Null
+        $rz=Zatwierdz $win ("Przypisz do "+$osoba+" + komentarz - zapisac?") { param($ww) Zapisz-Ticket $ww }
+        if($rz -eq 'stop'){ break }
+        if($rz -ne 'skip'){ $commented++; $nasze++ }
+        $akcja='nasz-incomplete'
+      }
     }
   }elseif($w.Team){
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  -> "+$w.Team+"  ["+$w.Regula+"]") -ForegroundColor Green
