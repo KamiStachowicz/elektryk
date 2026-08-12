@@ -211,7 +211,12 @@ function Akcja-Komentarz($win,$msg){
   if($KomentarzPublic){ $cb=Find1 $win $CTL::CheckBox "Public"; if($cb){ try{ $tp=$cb.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern); if($tp.Current.ToggleState.ToString() -ne 'On'){ Klik-El $cb|Out-Null } }catch{ Klik-El $cb|Out-Null } } }
   [console]::Beep(800,200); return $true
 }
-function Obsluz-Ostrzezenie($win){ }  # single-save wystarcza; zostawiam puste (bez skanu drzewa)
+# jesli wyskoczy "You have unsaved data. Do you want to continue?" - klika Yes/Tak/Continue/OK
+function Obsluz-Ostrzezenie($win){
+  Start-Sleep -Milliseconds 500
+  foreach($n in @('^Yes$','^Tak$','^Continue$','^OK$')){ $b=Find1 $win $CTL::Button $n; if($b){ Front $win; Klik-El $b|Out-Null; Start-Sleep -Milliseconds 700; Write-Host "   [ostrzezenie] kliknieto '$($b.Current.Name)'" -ForegroundColor DarkGray; return $true } }
+  return $false
+}
 
 # popup + auto-zapis
 function Potwierdz($tekst){ return [System.Windows.Forms.MessageBox]::Show($tekst+"`n`nTAK = zapisz i dalej    NIE = pomin (bez zapisu)    ANULUJ = STOP","Router - potwierdz",'YesNoCancel','Question') }
@@ -220,7 +225,7 @@ function Zatwierdz($win,$opis,$saveFn){
   if(-not $TrybPopup){ Read-Host ("   >>> "+$opis+" - sprawdz, ZAPISZ recznie, ENTER"); return 'saved' }
   $odp=Potwierdz $opis
   if($odp -eq 'Cancel'){ return 'stop' }
-  if($odp -eq 'Yes'){ Front $win; if(& $saveFn $win){ Write-Host "   zapisano" -ForegroundColor Green } else { Read-Host "   nie znalazlem przycisku zapisu - zrob recznie i ENTER" }; return 'saved' }
+  if($odp -eq 'Yes'){ Front $win; if(& $saveFn $win){ Write-Host "   zapisano" -ForegroundColor Green } else { Read-Host "   nie znalazlem przycisku zapisu - zrob recznie i ENTER" }; Start-Sleep -Milliseconds 600; Obsluz-Ostrzezenie $win | Out-Null; return 'saved' }
   Write-Host "   pominieto (bez zapisu)" -ForegroundColor DarkGray; return 'skip'
 }
 
