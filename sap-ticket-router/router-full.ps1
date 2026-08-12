@@ -66,8 +66,11 @@ public class Win {
  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
  [DllImport("user32.dll")] public static extern void mouse_event(uint f,uint x,uint y,uint d,int e);
  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+ [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h,int cmd);
+ [DllImport("user32.dll")] public static extern void keybd_event(byte vk,byte scan,uint flags,int extra);
  public static void Click(int x,int y){ SetCursorPos(x,y); mouse_event(0x0002,0,0,0,0); mouse_event(0x0004,0,0,0,0); }
  public static void Wheel(int x,int y,int delta){ SetCursorPos(x,y); mouse_event(0x0800,0,0,(uint)delta,0); }
+ public static void Foreground(IntPtr h){ keybd_event(0x12,0,0,0); ShowWindow(h,9); SetForegroundWindow(h); keybd_event(0x12,0,2,0); }
 }
 "@ }
 $AE=[System.Windows.Automation.AutomationElement]; $TS=[System.Windows.Automation.TreeScope]; $TRUE1=[System.Windows.Automation.Condition]::TrueCondition
@@ -134,30 +137,31 @@ function Get-RowKey($btn){ $node=$btn; for($k=0;$k -lt 8;$k++){ $p=$WALK.GetPare
 function Find-El($win,[string[]]$musi){ foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $nm=(ToAscii $e.Current.Name).ToLower(); if(-not $nm){continue}; $ok=$true; foreach($m in $musi){ if($nm -notmatch $m){ $ok=$false; break } }; if($ok){ return $e } }; return $null }
 function Klik-XY($x,$y){ [Win]::Click([int]$x,[int]$y) }
 function Klik-El($el){ $r=$el.Current.BoundingRectangle; if($r.Width -le 0){ return $false }; [Win]::Click([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2)); return $true }
-function Front($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle)|Out-Null; Start-Sleep -Milliseconds 350 }
+function Front($win){ [Win]::Foreground([IntPtr]$win.Current.NativeWindowHandle); Start-Sleep -Milliseconds 350 }
 function Do-Widoku($el){ try{ ($el.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern)).ScrollIntoView() }catch{} }
 function Przewin-Dol($vd){ if($vd.Count -gt 0){ $r=$vd[$vd.Count-1].Current.BoundingRectangle; [Win]::Wheel([int]($r.X+$r.Width/2),[int]($r.Y),-700) } }
 function Zapewnij-Widok($el){ try{ ($el.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern)).ScrollIntoView() }catch{}; Start-Sleep -Milliseconds 500; $sh=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height; for($k=0;$k -lt 8;$k++){ $r=$el.Current.BoundingRectangle; if($r.Width -le 0){ Start-Sleep -Milliseconds 300; continue }; $cy=$r.Y+$r.Height/2; if($cy -gt 110 -and $cy -lt ($sh-160)){ break }; $wy=[int]($sh/2); if($cy -ge ($sh-160)){ [Win]::Wheel([int]($r.X+10),$wy,-160) } else { [Win]::Wheel([int]($r.X+10),$wy,160) }; Start-Sleep -Milliseconds 450 } }
 function Find-ClearX($win,$field){ $fr=$field.Current.BoundingRectangle; foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ if($e.Current.ControlType.ProgrammaticName -notmatch 'Button'){ continue }; $br=$e.Current.BoundingRectangle; if($br.Width -le 0 -or $br.Width -gt 45){ continue }; if([Math]::Abs(($br.Y+$br.Height/2)-($fr.Y+$fr.Height/2)) -lt 22 -and $br.X -ge ($fr.X-5) -and $br.X -le ($fr.X+$fr.Width+70)){ return $e } }; return $null }
-function Kopiuj-Strone($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle)|Out-Null; Start-Sleep -Milliseconds 300; [System.Windows.Forms.SendKeys]::SendWait('{TAB}'); Start-Sleep -Milliseconds 250; [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 200; [System.Windows.Forms.SendKeys]::SendWait('^c'); Start-Sleep -Milliseconds 400; return (Get-Clipboard -Raw) }
+function Kopiuj-Strone($win){ [Win]::Foreground([IntPtr]$win.Current.NativeWindowHandle); Start-Sleep -Milliseconds 350; [System.Windows.Forms.SendKeys]::SendWait('{TAB}'); Start-Sleep -Milliseconds 250; [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 200; [System.Windows.Forms.SendKeys]::SendWait('^c'); Start-Sleep -Milliseconds 400; return (Get-Clipboard -Raw) }
 # czyta ticket = clipboard (Ctrl+A lapie tresc + komentarze). Bez skanu drzewa.
 function Czytaj-Strone($win){ return (Kopiuj-Strone $win) }
-function Wstecz($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle)|Out-Null; Start-Sleep -Milliseconds 200; [System.Windows.Forms.SendKeys]::SendWait('%{LEFT}') }
+function Wstecz($win){ [Win]::Foreground([IntPtr]$win.Current.NativeWindowHandle); Start-Sleep -Milliseconds 300; [System.Windows.Forms.SendKeys]::SendWait('%{LEFT}') }
 
 # klik "Edit assignee" (otwiera edytor grupy/osoby)
 function Klik-EditAssignee($win){
-  Front $win
   $edit=Find1 $win $CTL::Button 'edit assignee'; if(-not $edit){ $edit=Find1 $win $CTL::Hyperlink 'edit assignee' }
   if(-not $edit){ $edit=Find1 $win $CTL::Button 'edit' }
-  if($edit){ Write-Host ("   [edit] klikam '"+$edit.Current.Name+"'") -ForegroundColor DarkGray; Klik-El $edit|Out-Null; Start-Sleep -Milliseconds 2000; return $true }
+  if($edit){ Write-Host ("   [edit] klikam '"+$edit.Current.Name+"'") -ForegroundColor DarkGray; Front $win; Klik-El $edit|Out-Null; Start-Sleep -Milliseconds 2000; return $true }
   Write-Host "   [edit] nie znalazlem 'Edit assignee'" -ForegroundColor Red; return $false
 }
 # znajdz pole ComboBox/Edit po nazwie (z retry - edytor moze sie renderowac chwile)
 function Znajdz-Pole($win,$substr){ for($i=0;$i -lt 5;$i++){ $e=Find1 $win $CTL::ComboBox $substr; if(-not $e){ $e=Find1 $win $CTL::Edit $substr }; if($e){ return $e }; Start-Sleep -Milliseconds 700 }; return $null }
 # przewin do pola, wyczysc (Ctrl+A+Del), wpisz, wybierz z podpowiedzi
 function Wpisz-Combo($win,$target,$wartosc){
+  Front $win
   Zapewnij-Widok $target
   $fr=$target.Current.BoundingRectangle; $cx=[int]($fr.X+$fr.Width/2); $cy=[int]($fr.Y+$fr.Height/2)
+  Front $win
   Klik-XY $cx $cy; Start-Sleep -Milliseconds 400
   [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 150; [System.Windows.Forms.SendKeys]::SendWait('{DELETE}'); Start-Sleep -Milliseconds 200
   [System.Windows.Forms.SendKeys]::SendWait((EscSK $wartosc)); Start-Sleep -Milliseconds 1300
@@ -191,6 +195,7 @@ function Akcja-Komentarz($win,$msg){
   if(-not $target){ Write-Host "   [komentarz] nie znalazlem pola 'New note' - pomijam" -ForegroundColor Red; return $false }
   Zapewnij-Widok $target
   $r=$target.Current.BoundingRectangle
+  Front $win
   [Win]::Click([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2)); Start-Sleep -Milliseconds 500
   [System.Windows.Forms.SendKeys]::SendWait((EscSK $msg)); Start-Sleep -Milliseconds 300
   if($KomentarzPublic){ $cb=Find1 $win $CTL::CheckBox "Public"; if($cb){ try{ $tp=$cb.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern); if($tp.Current.ToggleState.ToString() -ne 'On'){ Klik-El $cb|Out-Null } }catch{ Klik-El $cb|Out-Null } } }
@@ -241,6 +246,7 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
   $seen[$tkey]=1; $stall=0; $nr++
   Do-Widoku $target; Start-Sleep -Milliseconds 300
   $r=$target.Current.BoundingRectangle; if($r.Width -le 0){ continue }
+  Front $win
   Klik-XY ([int]($r.X+$r.Width/2)) ([int]($r.Y+$r.Height/2)); Start-Sleep -Milliseconds $CzasLadowania
 
   $win=Get-EdgeWindow; $txt=Czytaj-Strone $win; $w=Przetworz $txt
