@@ -60,7 +60,7 @@ $CzasListy      = 1800
 $Etykiety = @('#Application\s*Name\s*:+\s*([A-Za-z0-9]+)','SAP\s*ERP\s*System\s*:+\s*([A-Za-z0-9]+)','\bSystem\s*:+\s*([A-Za-z0-9]+)')
 
 Add-Type -AssemblyName UIAutomationClient; Add-Type -AssemblyName UIAutomationTypes; Add-Type -AssemblyName System.Windows.Forms
-Add-Type @"
+if(-not ('Win' -as [type])){ Add-Type @"
 using System; using System.Runtime.InteropServices;
 public class Win {
  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
@@ -69,7 +69,7 @@ public class Win {
  public static void Click(int x,int y){ SetCursorPos(x,y); mouse_event(0x0002,0,0,0,0); mouse_event(0x0004,0,0,0,0); }
  public static void Wheel(int x,int y,int delta){ SetCursorPos(x,y); mouse_event(0x0800,0,0,(uint)delta,0); }
 }
-"@
+"@ }
 $AE=[System.Windows.Automation.AutomationElement]; $TS=[System.Windows.Automation.TreeScope]; $TRUE1=[System.Windows.Automation.Condition]::TrueCondition
 $WALK=[System.Windows.Automation.TreeWalker]::ControlViewWalker
 

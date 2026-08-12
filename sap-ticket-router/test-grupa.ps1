@@ -1,11 +1,11 @@
 # ============================================================
-#  TEST akcji GRUPA (z zegarami) - diagnoza szybkosci UIA
-#  klik "Edit assignee" -> Ctrl+End (dol strony) -> pole "Support group" -> wpisz
+#  TEST akcji GRUPA (z zegarami, bezpieczny na ponowne uruchomienie)
+#  klik "Edit assignee" -> Ctrl+End -> pole "Support group" -> wpisz
 #  NIE ZAPISUJE. Odpal na otwartym SmartIT tickecie.
 # ============================================================
 $GRUPA="GLOBAL-SERVICEDESK"
 Add-Type -AssemblyName UIAutomationClient; Add-Type -AssemblyName UIAutomationTypes; Add-Type -AssemblyName System.Windows.Forms
-Add-Type @"
+if(-not ('Win' -as [type])){ Add-Type @"
 using System; using System.Runtime.InteropServices;
 public class Win {
  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
@@ -13,7 +13,7 @@ public class Win {
  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
  public static void Click(int x,int y){ SetCursorPos(x,y); mouse_event(0x0002,0,0,0,0); mouse_event(0x0004,0,0,0,0); }
 }
-"@
+"@ }
 $AEP=[System.Windows.Automation.AutomationElement]; $TS=[System.Windows.Automation.TreeScope]; $TRUE1=[System.Windows.Automation.Condition]::TrueCondition
 $PC=[System.Windows.Automation.PropertyCondition]; $ANDC=[System.Windows.Automation.AndCondition]; $CT=[System.Windows.Automation.ControlType]
 function EscSK($s){ $r=''; foreach($c in $s.ToCharArray()){ if('+^%~(){}[]'.Contains([string]$c)){ $r+='{'+$c+'}' } else { $r+=$c } }; return $r }
