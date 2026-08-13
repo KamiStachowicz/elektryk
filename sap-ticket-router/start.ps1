@@ -269,6 +269,13 @@ if($mode -eq 'panel'){
       if($k.Comment){ $script:KomentarzPublic=[bool]$k.Public; Akcja-Komentarz $win $k.Comment | Out-Null }
       if($k.Grupa){ Akcja-Grupa $win $k.Grupa | Out-Null }
       if($k.Osoba){ Akcja-Osoba $win $k.Osoba | Out-Null }
+      # kafelki z komentarzem: NIE zapisuj od razu - zapytaj (zapisac i dalej / zostaw)
+      if($k.Comment){
+        $pf.WindowState='Normal'; $pf.TopMost=$true; $pf.Activate()
+        $odp=[System.Windows.Forms.MessageBox]::Show("Komentarz wpisany.`n`nTAK = zapisz i przejdz do nastepnego ticketa`nNIE = zostaw niezapisane (sprawdze recznie)","Panel - potwierdz",'YesNo','Question')
+        if($odp -ne 'Yes'){ Write-Host "   pominieto zapis (Twoj wybor)" -ForegroundColor DarkGray; return }
+        $pf.WindowState='Minimized'; [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 500
+      }
       Zapisz-Ticket $win | Out-Null; Start-Sleep -Milliseconds 700; Obsluz-Ostrzezenie $win | Out-Null
     } finally { $pf.WindowState='Normal'; $pf.TopMost=$true; $pf.Activate() }
     [console]::Beep(800,200)
@@ -281,6 +288,11 @@ if($mode -eq 'panel'){
     $pf.WindowState='Minimized'; [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 500
     try{
       $script:KomentarzPublic=[bool]$public; Akcja-Komentarz $win $tekst | Out-Null
+      # komentarz: NIE zapisuj od razu - zapytaj (zapisac i dalej / zostaw)
+      $pf.WindowState='Normal'; $pf.TopMost=$true; $pf.Activate()
+      $odp=[System.Windows.Forms.MessageBox]::Show("Komentarz wpisany.`n`nTAK = zapisz i przejdz do nastepnego ticketa`nNIE = zostaw niezapisane (sprawdze recznie)","Panel - potwierdz",'YesNo','Question')
+      if($odp -ne 'Yes'){ Write-Host "   pominieto zapis (Twoj wybor)" -ForegroundColor DarkGray; return }
+      $pf.WindowState='Minimized'; [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 500
       Zapisz-Ticket $win | Out-Null; Start-Sleep -Milliseconds 700; Obsluz-Ostrzezenie $win | Out-Null
     } finally { $pf.WindowState='Normal'; $pf.TopMost=$true; $pf.Activate() }
     [console]::Beep(800,200)
