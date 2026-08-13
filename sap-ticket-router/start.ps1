@@ -345,7 +345,7 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
   Klik-XY ([int]($r.X+$r.Width/2)) ([int]($r.Y+$r.Height/2)); Start-Sleep -Milliseconds $CzasLadowania
 
   $win=Get-EdgeWindow; $txt=Czytaj-Strone $win; $w=Przetworz $txt
-  $brakSys=[string]::IsNullOrEmpty($w.System); $brakUser=[string]::IsNullOrEmpty($w.UserId); $brakRole=(($w.Role.Count -eq 0) -and (-not $w.RefUser))
+  $haslo=[bool]($txt -match 'password|passwort|haslo|hasla'); $brakSys=[string]::IsNullOrEmpty($w.System); $brakUser=[string]::IsNullOrEmpty($w.UserId); $brakRole=(($w.Role.Count -eq 0) -and (-not $w.RefUser) -and (-not $haslo))
   $brakiAll=@(); if($brakSys){$brakiAll+='system'}; if($brakUser){$brakiAll+='user'}; if($brakRole){$brakiAll+='role'}
   $juzPytano = ($txt -match 'please provide')
   $powrot = $historia.ContainsKey($tkey)
