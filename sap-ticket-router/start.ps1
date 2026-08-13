@@ -367,6 +367,40 @@ if($mode -eq 'panel'){
   return
 }
 
+# ---------------- OKNO WYBORU KOMENTARZA (auto: NASZE niekompletne) ----------------
+# Nie wkleja komentarza automatem. Pokazuje liste propozycji (w tym Twoje wlasne kafelki
+# z panelu) + pole do edycji + Public. Zwraca Action = comment/none/stop.
+function Wybierz-Komentarz($tkey,$braki,$w){
+  $opcje=@()
+  $sug=Komentarz-Tresc $braki
+  if($sug){ $opcje+=[pscustomobject]@{ L='Sugerowany (wg brakow)'; Text=$sug; Public=$true } }
+  if(-not $w.RefUser){ $opcje+=[pscustomobject]@{ L='Zapytaj o reference user'; Text='Hi, please provide the reference user (the account whose access should be copied). Thanks.'; Public=$true } }
+  $opcje+=[pscustomobject]@{ L='Podaj system + user'; Text='Hi, please provide the SAP system (e.g. P50) and the user ID (e.g. M0123456). Thanks.'; Public=$true }
+  $opcje+=[pscustomobject]@{ L='Podaj role (lub reference user)'; Text='Hi, please provide the role(s) required, or a reference user to copy access from. Thanks.'; Public=$true }
+  $PlikKafelki="$env:USERPROFILE\sap_panel_kafelki.txt"
+  if(Test-Path $PlikKafelki){ try{ foreach($c in @(Import-Csv $PlikKafelki)){ if($c.Text){ $opcje+=[pscustomobject]@{ L=('[moj] '+$c.Text); Text=$c.Text; Public=($c.Public -eq '1') } } } }catch{} }
+
+  $f=New-Object System.Windows.Forms.Form
+  $f.Text=('Komentarz - '+$tkey); $f.Width=560; $f.Height=430; $f.TopMost=$true; $f.StartPosition='CenterScreen'; $f.FormBorderStyle='FixedDialog'; $f.MaximizeBox=$false; $f.MinimizeBox=$false
+  $info=New-Object System.Windows.Forms.Label; $info.Text=('Ticket NASZE, niekompletny. Braki: '+($braki -join ', ')+'.  Wybierz komentarz (albo bez).'); $info.Left=12; $info.Top=10; $info.Width=524; $info.Height=32; $f.Controls.Add($info)
+  $lst=New-Object System.Windows.Forms.ListBox; $lst.Left=12; $lst.Top=46; $lst.Width=524; $lst.Height=148; foreach($o in $opcje){ [void]$lst.Items.Add($o.L) }; $f.Controls.Add($lst)
+  $txt=New-Object System.Windows.Forms.TextBox; $txt.Multiline=$true; $txt.Left=12; $txt.Top=202; $txt.Width=524; $txt.Height=88; $txt.ScrollBars='Vertical'; $f.Controls.Add($txt)
+  $cbPub=New-Object System.Windows.Forms.CheckBox; $cbPub.Text='Public (widzi zglaszajacy)'; $cbPub.Left=12; $cbPub.Top=298; $cbPub.Width=260; $cbPub.Checked=$true; $f.Controls.Add($cbPub)
+  $lst.Add_SelectedIndexChanged({ $i=$lst.SelectedIndex; if($i -ge 0){ $txt.Text=$opcje[$i].Text; $cbPub.Checked=[bool]$opcje[$i].Public } }.GetNewClosure())
+  if($opcje.Count -gt 0){ $lst.SelectedIndex=0 }
+  $bAdd=New-Object System.Windows.Forms.Button; $bAdd.Text='Dodaj wybrany komentarz'; $bAdd.Left=12; $bAdd.Top=328; $bAdd.Width=250; $bAdd.Height=38; $bAdd.BackColor=[System.Drawing.Color]::FromArgb(46,120,210); $bAdd.ForeColor='White'
+  $bNone=New-Object System.Windows.Forms.Button; $bNone.Text='Bez komentarza (tylko osoba)'; $bNone.Left=272; $bNone.Top=328; $bNone.Width=190; $bNone.Height=38
+  $bStop=New-Object System.Windows.Forms.Button; $bStop.Text='STOP'; $bStop.Left=470; $bStop.Top=328; $bStop.Width=66; $bStop.Height=38; $bStop.ForeColor='Red'
+  $bAdd.Add_Click({ $f.Tag=[pscustomobject]@{ Action='comment'; Text=$txt.Text; Public=$cbPub.Checked }; $f.Close() }.GetNewClosure())
+  $bNone.Add_Click({ $f.Tag=[pscustomobject]@{ Action='none' }; $f.Close() }.GetNewClosure())
+  $bStop.Add_Click({ $f.Tag=[pscustomobject]@{ Action='stop' }; $f.Close() }.GetNewClosure())
+  $f.Controls.Add($bAdd); $f.Controls.Add($bNone); $f.Controls.Add($bStop)
+  [void]$f.ShowDialog()
+  $rr=$f.Tag; $f.Dispose()
+  if(-not $rr){ return [pscustomobject]@{ Action='none' } }
+  return $rr
+}
+
 # --- Start ---
 Clear-Host
 Write-Host "SAP Ticket Router - PELNY (routing do zespolow)" -ForegroundColor Cyan
@@ -439,13 +473,22 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
         if($rz -eq 'stop'){ break }
         if($rz -ne 'skip'){ $akcja='nasz-complete'; $nasze++ }
       }else{
-        $msg=Komentarz-Tresc $braki
         Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  NASZE NIEKOMPLETNY (brak: "+($braki -join '+')+") -> "+$osoba) -ForegroundColor Yellow
-        $win=Get-EdgeWindow; Akcja-Osoba $win $osoba | Out-Null
-        $win=Get-EdgeWindow; Akcja-Komentarz $win $msg | Out-Null
-        $rz=Zatwierdz $win ("Przypisz do "+$osoba+" + komentarz - zapisac?") { param($ww) Zapisz-Ticket $ww }
-        if($rz -eq 'stop'){ break }
-        if($rz -ne 'skip'){ $commented++; $nasze++ }
+        $win=Get-EdgeWindow; Akcja-Osoba $win $osoba | Out-Null       # NAJPIERW osoba
+        $wyb=Wybierz-Komentarz $tkey $braki $w                        # potem OKNO wyboru komentarza
+        if($wyb.Action -eq 'stop'){ break }
+        if($wyb.Action -eq 'comment' -and $wyb.Text){
+          $script:KomentarzPublic=[bool]$wyb.Public
+          $win=Get-EdgeWindow; Akcja-Komentarz $win $wyb.Text | Out-Null
+          $rz=Zatwierdz $win ("Przypisz do "+$osoba+" + komentarz - zapisac?") { param($ww) Zapisz-Ticket $ww }
+          if($rz -eq 'stop'){ break }
+          if($rz -ne 'skip'){ $commented++; $nasze++ }
+        }else{
+          Write-Host "   (bez komentarza - tylko osoba)" -ForegroundColor DarkGray
+          $rz=Zatwierdz $win ("Przypisz do "+$osoba+" (bez komentarza) - zapisac?") { param($ww) Zapisz-Ticket $ww }
+          if($rz -eq 'stop'){ break }
+          if($rz -ne 'skip'){ $nasze++ }
+        }
         $akcja='nasz-incomplete'
       }
     }
