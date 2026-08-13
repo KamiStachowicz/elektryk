@@ -128,10 +128,13 @@ if($mode -eq 'panel'){
   )
   function Wykonaj($k){
     $win=Get-EdgeWindow; if(-not $win){ [System.Windows.Forms.MessageBox]::Show('Nie znalazlem okna Edge.') | Out-Null; return }
-    if($k.Comment){ $script:KomentarzPublic=[bool]$k.Public; Akcja-Komentarz $win $k.Comment | Out-Null }
-    if($k.Grupa){ Akcja-Grupa $win $k.Grupa | Out-Null }
-    if($k.Osoba){ Akcja-Osoba $win $k.Osoba | Out-Null }
-    Zapisz-Ticket $win | Out-Null; Start-Sleep -Milliseconds 700; Obsluz-Ostrzezenie $win | Out-Null
+    $pf.WindowState='Minimized'; Start-Sleep -Milliseconds 400   # zejdz z drogi, oddaj fokus Edge
+    try{
+      if($k.Comment){ $script:KomentarzPublic=[bool]$k.Public; Akcja-Komentarz $win $k.Comment | Out-Null }
+      if($k.Grupa){ Akcja-Grupa $win $k.Grupa | Out-Null }
+      if($k.Osoba){ Akcja-Osoba $win $k.Osoba | Out-Null }
+      Zapisz-Ticket $win | Out-Null; Start-Sleep -Milliseconds 700; Obsluz-Ostrzezenie $win | Out-Null
+    } finally { $pf.WindowState='Normal'; $pf.TopMost=$true; $pf.Activate() }
     [console]::Beep(800,200)
   }
   $PlikKom = "$env:USERPROFILE\sap_panel_komentarz.txt"
@@ -139,8 +142,11 @@ if($mode -eq 'panel'){
     if([string]::IsNullOrWhiteSpace($tekst)){ [System.Windows.Forms.MessageBox]::Show('Wpisz tresc komentarza.') | Out-Null; return }
     Set-Content -Path $PlikKom -Value @($(if($public){'1'}else{'0'}), $tekst) -Encoding UTF8   # zapamietaj
     $win=Get-EdgeWindow; if(-not $win){ [System.Windows.Forms.MessageBox]::Show('Nie znalazlem okna Edge.') | Out-Null; return }
-    $script:KomentarzPublic=[bool]$public; Akcja-Komentarz $win $tekst | Out-Null
-    Zapisz-Ticket $win | Out-Null; Start-Sleep -Milliseconds 700; Obsluz-Ostrzezenie $win | Out-Null
+    $pf.WindowState='Minimized'; Start-Sleep -Milliseconds 400
+    try{
+      $script:KomentarzPublic=[bool]$public; Akcja-Komentarz $win $tekst | Out-Null
+      Zapisz-Ticket $win | Out-Null; Start-Sleep -Milliseconds 700; Obsluz-Ostrzezenie $win | Out-Null
+    } finally { $pf.WindowState='Normal'; $pf.TopMost=$true; $pf.Activate() }
     [console]::Beep(800,200)
   }
   $pf=New-Object System.Windows.Forms.Form
