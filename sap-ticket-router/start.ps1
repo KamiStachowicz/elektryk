@@ -79,8 +79,8 @@ $NaszeWyjatki = @('BKP','BEP')                        # NIE nasze - ida wg tabel
 $Kinga = 'M0076236'
 # Rotacja miedzy kolegami (kompletne bez komentarza, niekompletne + komentarz)
 $Koledzy = @('M0076236','M0204125','M0227642','M0234670')   # bez Milosza i bez Kamila
-# Mapa ID -> imie (dla czytelnej listy przy 'Przypisz osobe'). Uzupelnij imiona:
-$OsobyNazwy = @{ 'M0076236'='Kinga'; 'M0204125'=''; 'M0227642'=''; 'M0234670'='' }
+# Mapa ID -> imie (dla czytelnej listy przy 'Przypisz osobe').
+$OsobyNazwy = @{ 'M0076236'='Kinga'; 'M0204125'='Seba'; 'M0227642'='Tullio'; 'M0234670'='Slawomir'; 'M0235728'='Kamil' }
 $PlikRotacji = "$env:USERPROFILE\sap_router_rotacja.txt"
 $MaxTicketow    = 50
 $CzasLadowania  = 2500
