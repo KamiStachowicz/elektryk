@@ -255,22 +255,33 @@ function Zatwierdz($win,$opis,$saveFn){
 }
 
 if($mode -eq 'panel'){
-  # ---- KAFELKI (edytuj/dodawaj) ----
+  # ---- KAFELKI WBUDOWANE (akcje: grupa/osoba/komentarz) ----
   $Kafelki = @(
     @{ Text='Not our scope -> GSD'; Comment='Not our scope.'; Public=$false; Grupa='GLOBAL-SERVICEDESK'; Osoba='' }
     @{ Text='Przypisz do GSD'; Comment=''; Public=$false; Grupa='GLOBAL-SERVICEDESK'; Osoba='' }
     @{ Text='Komentarz: podaj system + user'; Comment='Hi, please provide the SAP system (e.g. P50) and the user ID (e.g. M0123456). Thanks.'; Public=$true; Grupa=''; Osoba='' }
     @{ Text='Komentarz: podaj role'; Comment='Hi, please provide the role(s) required. Thanks.'; Public=$true; Grupa=''; Osoba='' }
   )
-  function Wykonaj($k){
+  # ---- WLASNE KAFELKI-KOMENTARZE (Twoja lista, zapamietane miedzy uruchomieniami) ----
+  $PlikKafelki = "$env:USERPROFILE\sap_panel_kafelki.txt"   # kolumny: Public,Text
+  function AsBool($v){ return ($v -eq $true -or $v -eq '1' -or $v -eq 'True') }
+  function Wczytaj-Kafelki{ $l=@(); if(Test-Path $PlikKafelki){ try{ $l=@(Import-Csv $PlikKafelki) }catch{ $l=@() } }; return $l }
+  function Zapisz-Kafelki($lista){
+    if(@($lista).Count -gt 0){ @($lista) | Select-Object Public,Text | Export-Csv -Path $PlikKafelki -NoTypeInformation -Encoding UTF8 }
+    elseif(Test-Path $PlikKafelki){ Remove-Item $PlikKafelki -Force }
+  }
+  $script:customy = @(Wczytaj-Kafelki)
+
+  # ---- wpisz komentarz/grupe/osobe do ticketa, potem zapytaj o zapis ----
+  function Zastosuj($comment,$public,$grupa,$osoba){
     $win=Get-EdgeWindow; if(-not $win){ [System.Windows.Forms.MessageBox]::Show('Nie znalazlem okna Edge.') | Out-Null; return }
     $pf.WindowState='Minimized'; [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 500   # zejdz z drogi, oddaj fokus Edge
     try{
-      if($k.Comment){ $script:KomentarzPublic=[bool]$k.Public; Akcja-Komentarz $win $k.Comment | Out-Null }
-      if($k.Grupa){ Akcja-Grupa $win $k.Grupa | Out-Null }
-      if($k.Osoba){ Akcja-Osoba $win $k.Osoba | Out-Null }
-      # kafelki z komentarzem: NIE zapisuj od razu - zapytaj (zapisac i dalej / zostaw)
-      if($k.Comment){
+      if($comment){ $script:KomentarzPublic=[bool]$public; Akcja-Komentarz $win $comment | Out-Null }
+      if($grupa){ Akcja-Grupa $win $grupa | Out-Null }
+      if($osoba){ Akcja-Osoba $win $osoba | Out-Null }
+      # z komentarzem: NIE zapisuj od razu - zapytaj (zapisac i dalej / zostaw)
+      if($comment){
         $pf.WindowState='Normal'; $pf.TopMost=$true; $pf.Activate()
         $odp=[System.Windows.Forms.MessageBox]::Show("Komentarz wpisany.`n`nTAK = zapisz i przejdz do nastepnego ticketa`nNIE = zostaw niezapisane (sprawdze recznie)","Panel - potwierdz",'YesNo','Question')
         if($odp -ne 'Yes'){ Write-Host "   pominieto zapis (Twoj wybor)" -ForegroundColor DarkGray; return }
@@ -280,43 +291,78 @@ if($mode -eq 'panel'){
     } finally { $pf.WindowState='Normal'; $pf.TopMost=$true; $pf.Activate() }
     [console]::Beep(800,200)
   }
-  $PlikKom = "$env:USERPROFILE\sap_panel_komentarz.txt"
-  function DodajKomentarz($tekst,$public){
-    if([string]::IsNullOrWhiteSpace($tekst)){ [System.Windows.Forms.MessageBox]::Show('Wpisz tresc komentarza.') | Out-Null; return }
-    Set-Content -Path $PlikKom -Value @($(if($public){'1'}else{'0'}), $tekst) -Encoding UTF8   # zapamietaj
-    $win=Get-EdgeWindow; if(-not $win){ [System.Windows.Forms.MessageBox]::Show('Nie znalazlem okna Edge.') | Out-Null; return }
-    $pf.WindowState='Minimized'; [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 500
-    try{
-      $script:KomentarzPublic=[bool]$public; Akcja-Komentarz $win $tekst | Out-Null
-      # komentarz: NIE zapisuj od razu - zapytaj (zapisac i dalej / zostaw)
-      $pf.WindowState='Normal'; $pf.TopMost=$true; $pf.Activate()
-      $odp=[System.Windows.Forms.MessageBox]::Show("Komentarz wpisany.`n`nTAK = zapisz i przejdz do nastepnego ticketa`nNIE = zostaw niezapisane (sprawdze recznie)","Panel - potwierdz",'YesNo','Question')
-      if($odp -ne 'Yes'){ Write-Host "   pominieto zapis (Twoj wybor)" -ForegroundColor DarkGray; return }
-      $pf.WindowState='Minimized'; [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 500
-      Zapisz-Ticket $win | Out-Null; Start-Sleep -Milliseconds 700; Obsluz-Ostrzezenie $win | Out-Null
-    } finally { $pf.WindowState='Normal'; $pf.TopMost=$true; $pf.Activate() }
-    [console]::Beep(800,200)
-  }
+
   $pf=New-Object System.Windows.Forms.Form
-  $pf.Text='Ticket Panel'; $pf.Width=300; $pf.Height=(120+$Kafelki.Count*52+205); $pf.TopMost=$true; $pf.StartPosition='Manual'; $pf.Location=New-Object System.Drawing.Point(20,20); $pf.FormBorderStyle='FixedSingle'; $pf.ControlBox=$true; $pf.MaximizeBox=$false; $pf.MinimizeBox=$false
+  $pf.Text='Ticket Panel'; $pf.Width=340; $pf.TopMost=$true; $pf.StartPosition='Manual'; $pf.Location=New-Object System.Drawing.Point(20,20); $pf.FormBorderStyle='FixedSingle'; $pf.ControlBox=$true; $pf.MaximizeBox=$false; $pf.MinimizeBox=$false
   $pf.Add_Shown({ $pf.TopMost=$true; $pf.Activate(); $pf.BringToFront() })
-  $yy=12
-  foreach($k in $Kafelki){
-    $b=New-Object System.Windows.Forms.Button; $b.Text=$k.Text; $b.Width=264; $b.Height=44; $b.Left=12; $b.Top=$yy; $b.Tag=$k
-    $b.Add_Click({ $this.Enabled=$false; try{ Wykonaj $this.Tag }finally{ $this.Enabled=$true } })
-    $pf.Controls.Add($b); $yy+=52
+
+  # trwale kontrolki sekcji "wlasny komentarz" (tworzone raz, pozycjonowane przy kazdej przebudowie)
+  $lbl=New-Object System.Windows.Forms.Label; $lbl.Text='Nowy komentarz (dodaj jako kafelek):'; $lbl.Width=300; $lbl.Height=18
+  $tb=New-Object System.Windows.Forms.TextBox; $tb.Multiline=$true; $tb.Width=300; $tb.Height=60
+  $cbPub=New-Object System.Windows.Forms.CheckBox; $cbPub.Text='Public (widzi zglaszajacy)'; $cbPub.Width=280
+  $bApply=New-Object System.Windows.Forms.Button; $bApply.Text='Zastosuj teraz (bez zapisu na liste)'; $bApply.Width=300; $bApply.Height=32
+  $bAddTile=New-Object System.Windows.Forms.Button; $bAddTile.Text='+ Dodaj jako kafelek'; $bAddTile.Width=300; $bAddTile.Height=34; $bAddTile.BackColor=[System.Drawing.Color]::FromArgb(150,90,190); $bAddTile.ForeColor='White'
+  $bClose=New-Object System.Windows.Forms.Button; $bClose.Text='Zamknij'; $bClose.Width=300; $bClose.Height=30
+  $bApply.Add_Click({ if([string]::IsNullOrWhiteSpace($tb.Text)){ [System.Windows.Forms.MessageBox]::Show('Wpisz tresc komentarza.') | Out-Null; return }; $this.Enabled=$false; try{ Zastosuj $tb.Text $cbPub.Checked '' '' }finally{ $this.Enabled=$true } })
+  $bAddTile.Add_Click({
+    if([string]::IsNullOrWhiteSpace($tb.Text)){ [System.Windows.Forms.MessageBox]::Show('Wpisz tresc komentarza.') | Out-Null; return }
+    $nowy=[pscustomobject]@{ Public=$(if($cbPub.Checked){'1'}else{'0'}); Text=$tb.Text.Trim() }
+    $script:customy=@($script:customy)+$nowy
+    Zapisz-Kafelki $script:customy
+    $tb.Clear(); $cbPub.Checked=$false
+    BudujPanel
+  })
+  $bClose.Add_Click({ $pf.Close() })
+
+  # przebuduj caly uklad (wbudowane kafelki + wlasne + sekcja dodawania)
+  function BudujPanel{
+    $pf.SuspendLayout()
+    $pf.Controls.Clear()
+    $yy=12
+    # -- wbudowane akcje --
+    foreach($k in $Kafelki){
+      $hasCom=[bool]$k.Comment
+      $b=New-Object System.Windows.Forms.Button; $b.Text=$k.Text; $b.Left=12; $b.Top=$yy; $b.Height=44; $b.AutoEllipsis=$true
+      if($hasCom){
+        $b.Width=214
+        $chk=New-Object System.Windows.Forms.CheckBox; $chk.Text='Public'; $chk.Left=232; $chk.Top=($yy+13); $chk.Width=88; $chk.Checked=(AsBool $k.Public)
+        $pf.Controls.Add($chk)
+        $t=$k; $c=$chk; $btn=$b
+        $b.Add_Click({ $btn.Enabled=$false; try{ Zastosuj $t.Comment $c.Checked $t.Grupa $t.Osoba }finally{ $btn.Enabled=$true } }.GetNewClosure())
+      } else {
+        $b.Width=308
+        $t=$k; $btn=$b
+        $b.Add_Click({ $btn.Enabled=$false; try{ Zastosuj $t.Comment $false $t.Grupa $t.Osoba }finally{ $btn.Enabled=$true } }.GetNewClosure())
+      }
+      $pf.Controls.Add($b); $yy+=50
+    }
+    # -- Twoje wlasne kafelki-komentarze --
+    if(@($script:customy).Count -gt 0){
+      $sep=New-Object System.Windows.Forms.Label; $sep.Text='--- Twoje kafelki ---'; $sep.Left=12; $sep.Top=$yy; $sep.Width=300; $sep.Height=16; $sep.ForeColor='Gray'; $pf.Controls.Add($sep); $yy+=20
+    }
+    foreach($k in @($script:customy)){
+      $etyk=$k.Text; if($etyk.Length -gt 60){ $etyk=$etyk.Substring(0,57)+'...' }
+      $b=New-Object System.Windows.Forms.Button; $b.Text=$etyk; $b.Left=12; $b.Top=$yy; $b.Width=170; $b.Height=44; $b.AutoEllipsis=$true
+      $chk=New-Object System.Windows.Forms.CheckBox; $chk.Text='Public'; $chk.Left=188; $chk.Top=($yy+13); $chk.Width=88; $chk.Checked=(AsBool $k.Public)
+      $del=New-Object System.Windows.Forms.Button; $del.Text='X'; $del.Left=278; $del.Top=$yy; $del.Width=42; $del.Height=44; $del.ForeColor='Red'
+      $t=$k; $c=$chk; $btn=$b
+      $b.Add_Click({ $btn.Enabled=$false; try{ Zastosuj $t.Text $c.Checked '' '' }finally{ $btn.Enabled=$true } }.GetNewClosure())
+      $del.Add_Click({ $script:customy=@(@($script:customy) | Where-Object { $_ -ne $t }); Zapisz-Kafelki $script:customy; BudujPanel }.GetNewClosure())
+      $pf.Controls.Add($b); $pf.Controls.Add($chk); $pf.Controls.Add($del); $yy+=50
+    }
+    # -- sekcja: nowy komentarz -> dodaj jako kafelek --
+    $yy+=8
+    $lbl.Left=12;     $lbl.Top=$yy;     $pf.Controls.Add($lbl);     $yy+=20
+    $tb.Left=12;      $tb.Top=$yy;      $pf.Controls.Add($tb);      $yy+=66
+    $cbPub.Left=12;   $cbPub.Top=$yy;   $pf.Controls.Add($cbPub);   $yy+=26
+    $bApply.Left=12;  $bApply.Top=$yy;  $pf.Controls.Add($bApply);  $yy+=38
+    $bAddTile.Left=12;$bAddTile.Top=$yy;$pf.Controls.Add($bAddTile);$yy+=40
+    $bClose.Left=12;  $bClose.Top=$yy;  $pf.Controls.Add($bClose);  $yy+=38
+    $pf.ClientSize=New-Object System.Drawing.Size(324,$yy)
+    $pf.ResumeLayout()
   }
-  # ---- wlasny komentarz ----
-  $yy+=8
-  $lbl=New-Object System.Windows.Forms.Label; $lbl.Text='Wlasny komentarz:'; $lbl.Left=12; $lbl.Top=$yy; $lbl.Width=200; $lbl.Height=18; $pf.Controls.Add($lbl); $yy+=20
-  $tb=New-Object System.Windows.Forms.TextBox; $tb.Multiline=$true; $tb.Left=12; $tb.Top=$yy; $tb.Width=264; $tb.Height=64; $pf.Controls.Add($tb); $yy+=70
-  $cbPub=New-Object System.Windows.Forms.CheckBox; $cbPub.Text='Public (widzi zglaszajacy)'; $cbPub.Left=12; $cbPub.Top=$yy; $cbPub.Width=250; $pf.Controls.Add($cbPub); $yy+=26
-  # wczytaj zapamietany komentarz
-  if(Test-Path $PlikKom){ $ln=@(Get-Content $PlikKom); if($ln.Count -ge 1){ $cbPub.Checked=($ln[0] -eq '1') }; if($ln.Count -ge 2){ $tb.Text=($ln[1..($ln.Count-1)] -join "`r`n") } }
-  $bAdd=New-Object System.Windows.Forms.Button; $bAdd.Text='Dodaj komentarz'; $bAdd.Left=12; $bAdd.Top=$yy; $bAdd.Width=264; $bAdd.Height=40
-  $bAdd.Add_Click({ $this.Enabled=$false; try{ DodajKomentarz $tb.Text $cbPub.Checked }finally{ $this.Enabled=$true } })
-  $pf.Controls.Add($bAdd); $yy+=48
-  $bClose=New-Object System.Windows.Forms.Button; $bClose.Text='Zamknij'; $bClose.Left=12; $bClose.Top=$yy; $bClose.Width=264; $bClose.Height=32; $bClose.Add_Click({ $pf.Close() }); $pf.Controls.Add($bClose)
+
+  BudujPanel
   [void]$pf.ShowDialog()
   return
 }
