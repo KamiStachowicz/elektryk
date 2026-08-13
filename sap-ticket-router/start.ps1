@@ -2,7 +2,7 @@
 #  SAP TICKET TOOL - menu: DISPATCH (router) / GRC (w budowie)
 #  Samodzielny plik - wklej do ISE i F5. Nie wola innych plikow.
 # ============================================================
-Add-Type -AssemblyName UIAutomationClient; Add-Type -AssemblyName UIAutomationTypes; Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName UIAutomationClient; Add-Type -AssemblyName UIAutomationTypes; Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; Add-Type -AssemblyName Microsoft.VisualBasic
 if(-not ('Win' -as [type])){ Add-Type @"
 using System; using System.Runtime.InteropServices;
 public class Win {
@@ -244,14 +244,57 @@ function Obsluz-Ostrzezenie($win){
 }
 
 # popup + auto-zapis
-function Potwierdz($tekst){ return [System.Windows.Forms.MessageBox]::Show($tekst+"`n`nTAK = zapisz i dalej    NIE = pomin (bez zapisu)    ANULUJ = STOP","Router - potwierdz",'YesNoCancel','Question') }
 function Zapisz-Ticket($win){ foreach($n in @('Save','Zapisz','Save changes','Save and close')){ $b=Find1 $win $CTL::Button $n; if($b){ Klik-El $b|Out-Null; return $true } }; return $false }
-function Zatwierdz($win,$opis,$saveFn){
+# wlasne okno potwierdzenia z dodatkowymi akcjami; zwraca: yes/no/cancel/comment/osoba/grupa
+function Pokaz-Potwierdz($opis){
+  $f=New-Object System.Windows.Forms.Form
+  $f.Text='Router - potwierdz'; $f.Width=500; $f.Height=252; $f.TopMost=$true; $f.StartPosition='CenterScreen'; $f.FormBorderStyle='FixedDialog'; $f.MaximizeBox=$false; $f.MinimizeBox=$false
+  $lb=New-Object System.Windows.Forms.Label; $lb.Text=$opis; $lb.Left=16; $lb.Top=14; $lb.Width=462; $lb.Height=64; $f.Controls.Add($lb)
+  $bYes=New-Object System.Windows.Forms.Button; $bYes.Text='Zapisz i dalej'; $bYes.Left=16; $bYes.Top=86; $bYes.Width=150; $bYes.Height=44; $bYes.BackColor=[System.Drawing.Color]::FromArgb(60,160,90); $bYes.ForeColor='White'
+  $bNo=New-Object System.Windows.Forms.Button; $bNo.Text='Pomin (bez zapisu)'; $bNo.Left=176; $bNo.Top=86; $bNo.Width=150; $bNo.Height=44
+  $bStop=New-Object System.Windows.Forms.Button; $bStop.Text='STOP'; $bStop.Left=336; $bStop.Top=86; $bStop.Width=142; $bStop.Height=44; $bStop.ForeColor='Red'
+  $bKom=New-Object System.Windows.Forms.Button; $bKom.Text='Dodaj komentarz...'; $bKom.Left=16; $bKom.Top=138; $bKom.Width=150; $bKom.Height=38; $bKom.BackColor=[System.Drawing.Color]::FromArgb(150,90,190); $bKom.ForeColor='White'
+  $bOso=New-Object System.Windows.Forms.Button; $bOso.Text='Przypisz osobe...'; $bOso.Left=176; $bOso.Top=138; $bOso.Width=150; $bOso.Height=38
+  $bGr=New-Object System.Windows.Forms.Button; $bGr.Text='Zmien grupe...'; $bGr.Left=336; $bGr.Top=138; $bGr.Width=142; $bGr.Height=38
+  $bYes.Add_Click({ $f.Tag='yes'; $f.Close() }.GetNewClosure())
+  $bNo.Add_Click({ $f.Tag='no'; $f.Close() }.GetNewClosure())
+  $bStop.Add_Click({ $f.Tag='cancel'; $f.Close() }.GetNewClosure())
+  $bKom.Add_Click({ $f.Tag='comment'; $f.Close() }.GetNewClosure())
+  $bOso.Add_Click({ $f.Tag='osoba'; $f.Close() }.GetNewClosure())
+  $bGr.Add_Click({ $f.Tag='grupa'; $f.Close() }.GetNewClosure())
+  $f.Controls.AddRange(@($bYes,$bNo,$bStop,$bKom,$bOso,$bGr))
+  [void]$f.ShowDialog()
+  $r=$f.Tag; $f.Dispose()
+  if(-not $r){ return 'cancel' }
+  return $r
+}
+function Zatwierdz($win,$opis,$saveFn,$w=$null,$braki=@(),$tkey=''){
   if(-not $TrybPopup){ Read-Host ("   >>> "+$opis+" - sprawdz, ZAPISZ recznie, ENTER"); return 'saved' }
-  $odp=Potwierdz $opis
-  if($odp -eq 'Cancel'){ return 'stop' }
-  if($odp -eq 'Yes'){ Front $win; if(& $saveFn $win){ Write-Host "   zapisano" -ForegroundColor Green } else { Read-Host "   nie znalazlem przycisku zapisu - zrob recznie i ENTER" }; Start-Sleep -Milliseconds 600; Obsluz-Ostrzezenie $win | Out-Null; return 'saved' }
-  Write-Host "   pominieto (bez zapisu)" -ForegroundColor DarkGray; return 'skip'
+  while($true){
+    $odp=Pokaz-Potwierdz $opis
+    if($odp -eq 'cancel'){ return 'stop' }
+    if($odp -eq 'no'){ Write-Host "   pominieto (bez zapisu)" -ForegroundColor DarkGray; return 'skip' }
+    if($odp -eq 'comment'){
+      $wyb=Wybierz-Komentarz $tkey $braki $w
+      if($wyb.Action -eq 'stop'){ return 'stop' }
+      if($wyb.Action -eq 'comment' -and $wyb.Text){ $script:KomentarzPublic=[bool]$wyb.Public; Akcja-Komentarz $win $wyb.Text | Out-Null; Write-Host "   [dodano komentarz]" -ForegroundColor DarkGray }
+      continue
+    }
+    if($odp -eq 'osoba'){
+      $os=[Microsoft.VisualBasic.Interaction]::InputBox('Podaj ID osoby (np. M0123456):','Przypisz osobe','')
+      if($os){ Akcja-Osoba $win $os | Out-Null }
+      continue
+    }
+    if($odp -eq 'grupa'){
+      $gr=[Microsoft.VisualBasic.Interaction]::InputBox('Podaj nazwe grupy (np. GLOBAL-SERVICEDESK):','Zmien grupe','')
+      if($gr){ Akcja-Grupa $win $gr | Out-Null }
+      continue
+    }
+    # yes
+    Front $win
+    if(& $saveFn $win){ Write-Host "   zapisano" -ForegroundColor Green } else { Read-Host "   nie znalazlem przycisku zapisu - zrob recznie i ENTER" }
+    Start-Sleep -Milliseconds 600; Obsluz-Ostrzezenie $win | Out-Null; return 'saved'
+  }
 }
 
 if($mode -eq 'panel'){
@@ -459,7 +502,7 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
       $osoba=$Kinga
       Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  MARS -> Kinga ("+$osoba+")") -ForegroundColor Cyan
       $win=Get-EdgeWindow; Akcja-Osoba $win $osoba | Out-Null
-      $rz=Zatwierdz $win ("MARS - przypisac do Kingi ("+$osoba+")?") { param($ww) Zapisz-Ticket $ww }
+      $rz=Zatwierdz $win ("MARS - przypisac do Kingi ("+$osoba+")?") { param($ww) Zapisz-Ticket $ww } $w $brakiAll $tkey
       if($rz -eq 'stop'){ break }
       if($rz -ne 'skip'){ $akcja='mars'; $nasze++ }
     }else{
@@ -469,26 +512,15 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
         Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  NASZE KOMPLETNY -> "+$osoba) -ForegroundColor Cyan
         if($w.Role.Count -gt 0){ Write-Host ("   ROLE: "+($w.Role -join ', ')) }
         $win=Get-EdgeWindow; Akcja-Osoba $win $osoba | Out-Null
-        $rz=Zatwierdz $win ("Przypisac do "+$osoba+"?") { param($ww) Zapisz-Ticket $ww }
+        $rz=Zatwierdz $win ("Przypisac do "+$osoba+"?") { param($ww) Zapisz-Ticket $ww } $w $brakiAll $tkey
         if($rz -eq 'stop'){ break }
         if($rz -ne 'skip'){ $akcja='nasz-complete'; $nasze++ }
       }else{
         Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  SYSTEM="+$w.System+"  NASZE NIEKOMPLETNY (brak: "+($braki -join '+')+") -> "+$osoba) -ForegroundColor Yellow
-        $win=Get-EdgeWindow; Akcja-Osoba $win $osoba | Out-Null       # NAJPIERW osoba
-        $wyb=Wybierz-Komentarz $tkey $braki $w                        # potem OKNO wyboru komentarza
-        if($wyb.Action -eq 'stop'){ break }
-        if($wyb.Action -eq 'comment' -and $wyb.Text){
-          $script:KomentarzPublic=[bool]$wyb.Public
-          $win=Get-EdgeWindow; Akcja-Komentarz $win $wyb.Text | Out-Null
-          $rz=Zatwierdz $win ("Przypisz do "+$osoba+" + komentarz - zapisac?") { param($ww) Zapisz-Ticket $ww }
-          if($rz -eq 'stop'){ break }
-          if($rz -ne 'skip'){ $commented++; $nasze++ }
-        }else{
-          Write-Host "   (bez komentarza - tylko osoba)" -ForegroundColor DarkGray
-          $rz=Zatwierdz $win ("Przypisz do "+$osoba+" (bez komentarza) - zapisac?") { param($ww) Zapisz-Ticket $ww }
-          if($rz -eq 'stop'){ break }
-          if($rz -ne 'skip'){ $nasze++ }
-        }
+        $win=Get-EdgeWindow; Akcja-Osoba $win $osoba | Out-Null       # NAJPIERW osoba, komentarz w oknie potwierdzenia
+        $rz=Zatwierdz $win ("Przypisz do "+$osoba+" (brak: "+($braki -join '+')+"). Dodaj komentarz i zapisz?") { param($ww) Zapisz-Ticket $ww } $w $brakiAll $tkey
+        if($rz -eq 'stop'){ break }
+        if($rz -ne 'skip'){ $nasze++ }
         $akcja='nasz-incomplete'
       }
     }
@@ -497,12 +529,12 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
     if($w.Role.Count -gt 0){ Write-Host ("   ROLE: "+($w.Role -join ', ')) }
     Write-Host ("   AKCJA: przypisz do "+$w.Team) -ForegroundColor Yellow
     $win=Get-EdgeWindow
-    if(Akcja-Grupa $win $w.Team){ $rz=Zatwierdz $win ("Przypisac grupe: "+$w.Team+"?") { param($ww) Zapisz-Ticket $ww }; if($rz -eq 'stop'){ break }; if($rz -ne 'skip'){ $akcja='assign'; $routed++; $historia[$tkey]=1; Add-Content -Path $PlikHistoria -Value ($tkey+';'+(Get-Date -Format 'yyyy-MM-dd')) } else { $akcja='assign-skip' } }
+    if(Akcja-Grupa $win $w.Team){ $rz=Zatwierdz $win ("Przypisac grupe: "+$w.Team+"?") { param($ww) Zapisz-Ticket $ww } $w $brakiAll $tkey; if($rz -eq 'stop'){ break }; if($rz -ne 'skip'){ $akcja='assign'; $routed++; $historia[$tkey]=1; Add-Content -Path $PlikHistoria -Value ($tkey+';'+(Get-Date -Format 'yyyy-MM-dd')) } else { $akcja='assign-skip' } }
   }elseif($brakSys){
     $msg=Komentarz-Tresc @('system')
     Write-Host ("--- Ticket #"+$nr+" ("+$tkey+")  BRAK systemu -> KOMENTARZ") -ForegroundColor Magenta
     $win=Get-EdgeWindow; Akcja-Komentarz $win $msg | Out-Null
-    $rz=Zatwierdz $win ("Komentarz (podaj system) - zapisac?") { param($ww) Zapisz-Ticket $ww }
+    $rz=Zatwierdz $win ("Komentarz (podaj system) - zapisac?") { param($ww) Zapisz-Ticket $ww } $w $brakiAll $tkey
     if($rz -eq 'stop'){ break }
     if($rz -ne 'skip'){ $akcja='comment'; $commented++ }
   }else{
