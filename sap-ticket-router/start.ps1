@@ -83,8 +83,14 @@ $Koledzy = @('M0076236','M0204125','M0227642','M0234670')   # bez Milosza i bez 
 $OsobyNazwy = @{ 'M0076236'='Kinga'; 'M0204125'='Seba'; 'M0227642'='Tullio'; 'M0234670'='Slawomir'; 'M0235728'='Kamil' }
 $PlikRotacji = "$env:USERPROFILE\sap_router_rotacja.txt"
 $MaxTicketow    = 50
-$CzasLadowania  = 2500
-$CzasListy      = 1800
+# --- PREDKOSC ---
+# $Tempo skaluje DROBNE opoznienia (klikanie/pisanie). Mniej = szybciej.
+#   1.0 = jak bylo, 0.6 = szybciej. Jak zaczyna sie mylic/klikac za wczesnie -> zwieksz.
+$Tempo          = 0.6
+# Te DWA to czekanie na ZALADOWANIE strony (NIE skalowane) - obniz ostroznie:
+$CzasLadowania  = 2000   # po kliknieciu ticketa (otwarcie szczegolow)
+$CzasListy      = 1300   # po powrocie do listy
+function Pauza($ms){ $v=[int]($ms*$Tempo); if($v -lt 30){ $v=30 }; [System.Threading.Thread]::Sleep($v) }
 $Etykiety = @('#Application\s*Name\s*:+\s*([A-Za-z0-9]+)','SAP\s*ERP\s*System\s*:+\s*([A-Za-z0-9]+)','\bSystem\s*:+\s*([A-Za-z0-9]+)')
 
 Add-Type -AssemblyName UIAutomationClient; Add-Type -AssemblyName UIAutomationTypes; Add-Type -AssemblyName System.Windows.Forms
@@ -162,21 +168,21 @@ function Get-RowKey($btn){ $node=$btn; for($k=0;$k -lt 8;$k++){ $p=$WALK.GetPare
 function Find-El($win,[string[]]$musi){ foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ $nm=(ToAscii $e.Current.Name).ToLower(); if(-not $nm){continue}; $ok=$true; foreach($m in $musi){ if($nm -notmatch $m){ $ok=$false; break } }; if($ok){ return $e } }; return $null }
 function Klik-XY($x,$y){ [Win]::Click([int]$x,[int]$y) }
 function Klik-El($el){ $r=$el.Current.BoundingRectangle; if($r.Width -le 0){ return $false }; [Win]::Click([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2)); return $true }
-function Front($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle)|Out-Null; Start-Sleep -Milliseconds 350 }
+function Front($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle)|Out-Null; Pauza 350 }
 function Do-Widoku($el){ try{ ($el.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern)).ScrollIntoView() }catch{} }
 function Przewin-Dol($vd){ if($vd.Count -gt 0){ $r=$vd[$vd.Count-1].Current.BoundingRectangle; [Win]::Wheel([int]($r.X+$r.Width/2),[int]($r.Y),-700) } }
-function Zapewnij-Widok($el){ try{ ($el.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern)).ScrollIntoView() }catch{}; Start-Sleep -Milliseconds 500; $sw=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width; $sh=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height; $wx=[int]($sw/2); $wy=[int]($sh/2); for($k=0;$k -lt 14;$k++){ $r=$el.Current.BoundingRectangle; if($r.Width -le 0){ Start-Sleep -Milliseconds 300; continue }; $cy=$r.Y+$r.Height/2; if($cy -gt 120 -and $cy -lt ($sh-200)){ break }; if($cy -ge ($sh-200)){ [Win]::Wheel($wx,$wy,-400) } else { [Win]::Wheel($wx,$wy,400) }; Start-Sleep -Milliseconds 400 } }
+function Zapewnij-Widok($el){ try{ ($el.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern)).ScrollIntoView() }catch{}; Pauza 500; $sw=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width; $sh=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height; $wx=[int]($sw/2); $wy=[int]($sh/2); for($k=0;$k -lt 14;$k++){ $r=$el.Current.BoundingRectangle; if($r.Width -le 0){ Pauza 300; continue }; $cy=$r.Y+$r.Height/2; if($cy -gt 120 -and $cy -lt ($sh-200)){ break }; if($cy -ge ($sh-200)){ [Win]::Wheel($wx,$wy,-400) } else { [Win]::Wheel($wx,$wy,400) }; Pauza 400 } }
 function Find-ClearX($win,$field){ $fr=$field.Current.BoundingRectangle; foreach($e in $win.FindAll($TS::Descendants,$TRUE1)){ if($e.Current.ControlType.ProgrammaticName -notmatch 'Button'){ continue }; $br=$e.Current.BoundingRectangle; if($br.Width -le 0 -or $br.Width -gt 45){ continue }; if([Math]::Abs(($br.Y+$br.Height/2)-($fr.Y+$fr.Height/2)) -lt 22 -and $br.X -ge ($fr.X-5) -and $br.X -le ($fr.X+$fr.Width+70)){ return $e } }; return $null }
-function Kopiuj-Strone($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle)|Out-Null; Start-Sleep -Milliseconds 350; [System.Windows.Forms.SendKeys]::SendWait('{TAB}'); Start-Sleep -Milliseconds 250; [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 200; [System.Windows.Forms.SendKeys]::SendWait('^c'); Start-Sleep -Milliseconds 400; return (Get-Clipboard -Raw) }
+function Kopiuj-Strone($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle)|Out-Null; Pauza 350; [System.Windows.Forms.SendKeys]::SendWait('{TAB}'); Pauza 250; [System.Windows.Forms.SendKeys]::SendWait('^a'); Pauza 200; [System.Windows.Forms.SendKeys]::SendWait('^c'); Pauza 400; return (Get-Clipboard -Raw) }
 # czyta ticket = clipboard (Ctrl+A lapie tresc + komentarze). Bez skanu drzewa.
 function Czytaj-Strone($win){ return (Kopiuj-Strone $win) }
-function Wstecz($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle)|Out-Null; Start-Sleep -Milliseconds 300; [System.Windows.Forms.SendKeys]::SendWait('%{LEFT}') }
+function Wstecz($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWindowHandle)|Out-Null; Pauza 300; [System.Windows.Forms.SendKeys]::SendWait('%{LEFT}') }
 
 # klik "Edit assignee" (otwiera edytor grupy/osoby)
 function Klik-EditAssignee($win){
   $edit=Find1 $win $CTL::Button 'edit assignee'; if(-not $edit){ $edit=Find1 $win $CTL::Hyperlink 'edit assignee' }
   if(-not $edit){ $edit=Find1 $win $CTL::Button 'edit' }
-  if($edit){ Write-Host ("   [edit] klikam '"+$edit.Current.Name+"'") -ForegroundColor DarkGray; Front $win; Klik-El $edit|Out-Null; Start-Sleep -Milliseconds 2000; return $true }
+  if($edit){ Write-Host ("   [edit] klikam '"+$edit.Current.Name+"'") -ForegroundColor DarkGray; Front $win; Klik-El $edit|Out-Null; Start-Sleep -Milliseconds 1500; return $true }
   Write-Host "   [edit] nie znalazlem 'Edit assignee'" -ForegroundColor Red; return $false
 }
 # znajdz pole ComboBox/Edit wg listy nazw (priorytet) z wykluczeniami; z retry
@@ -186,7 +192,7 @@ function Znajdz-PoleEx($win,$includes,$excludes){
     $ed=@($win.FindAll($TS::Descendants,(New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty,$CTL::Edit))))
     $all=$cb+$ed
     foreach($inc in $includes){ foreach($e in $all){ $nm=(ToAscii $e.Current.Name).ToLower(); if($nm -match $inc){ $bad=$false; foreach($x in $excludes){ if($x -and ($nm -match $x)){ $bad=$true; break } }; if(-not $bad){ return $e } } } }
-    Start-Sleep -Milliseconds 700
+    Pauza 700
   }
   return $null
 }
@@ -198,11 +204,11 @@ function Wpisz-Combo($win,$target,$wartosc){
   $sh=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height
   if($cy -lt 60 -or $cy -gt ($sh-90)){ Write-Host ("   [pole poza ekranem y="+$cy+" - NIE klikam (zeby nie minimalizowac)]") -ForegroundColor Red; return $false }
   Front $win
-  Klik-XY $cx $cy; Start-Sleep -Milliseconds 400
-  [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 150; [System.Windows.Forms.SendKeys]::SendWait('{DELETE}'); Start-Sleep -Milliseconds 200
-  [System.Windows.Forms.SendKeys]::SendWait((EscSK $wartosc)); Start-Sleep -Milliseconds 1300
-  [System.Windows.Forms.SendKeys]::SendWait('{DOWN}'); Start-Sleep -Milliseconds 300
-  [System.Windows.Forms.SendKeys]::SendWait('{ENTER}'); Start-Sleep -Milliseconds 300
+  Klik-XY $cx $cy; Pauza 400
+  [System.Windows.Forms.SendKeys]::SendWait('^a'); Pauza 150; [System.Windows.Forms.SendKeys]::SendWait('{DELETE}'); Pauza 200
+  [System.Windows.Forms.SendKeys]::SendWait((EscSK $wartosc)); Start-Sleep -Milliseconds 1000
+  [System.Windows.Forms.SendKeys]::SendWait('{DOWN}'); Pauza 300
+  [System.Windows.Forms.SendKeys]::SendWait('{ENTER}'); Pauza 300
 }
 
 # AKCJA: Edit assignee -> pole "Support group" -> wpisz $grupa (nie zapisuje). Zwraca $true.
@@ -233,15 +239,15 @@ function Akcja-Komentarz($win,$msg){
   $shC=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height; $cyC=[int]($r.Y+$r.Height/2)
   if($cyC -lt 60 -or $cyC -gt ($shC-90)){ Write-Host "   [komentarz poza ekranem - NIE klikam (zeby nie minimalizowac)]" -ForegroundColor Red; return $false }
   Front $win
-  [Win]::Click([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2)); Start-Sleep -Milliseconds 500
-  [System.Windows.Forms.SendKeys]::SendWait((EscSK $msg)); Start-Sleep -Milliseconds 300
+  [Win]::Click([int]($r.X+$r.Width/2),[int]($r.Y+$r.Height/2)); Pauza 500
+  [System.Windows.Forms.SendKeys]::SendWait((EscSK $msg)); Pauza 300
   if($KomentarzPublic){ $cb=Find1 $win $CTL::CheckBox "Public"; if($cb){ try{ $tp=$cb.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern); if($tp.Current.ToggleState.ToString() -ne 'On'){ Klik-El $cb|Out-Null } }catch{ Klik-El $cb|Out-Null } } }
   [console]::Beep(800,200); return $true
 }
 # jesli wyskoczy "You have unsaved data. Do you want to continue?" - klika Yes/Tak/Continue/OK
 function Obsluz-Ostrzezenie($win){
-  Start-Sleep -Milliseconds 500
-  foreach($n in @('^Yes$','^Tak$','^Continue$','^OK$')){ $b=Find1 $win $CTL::Button $n; if($b){ Front $win; Klik-El $b|Out-Null; Start-Sleep -Milliseconds 700; Write-Host "   [ostrzezenie] kliknieto '$($b.Current.Name)'" -ForegroundColor DarkGray; return $true } }
+  Pauza 500
+  foreach($n in @('^Yes$','^Tak$','^Continue$','^OK$')){ $b=Find1 $win $CTL::Button $n; if($b){ Front $win; Klik-El $b|Out-Null; Pauza 700; Write-Host "   [ostrzezenie] kliknieto '$($b.Current.Name)'" -ForegroundColor DarkGray; return $true } }
   return $false
 }
 
@@ -297,7 +303,7 @@ function Zatwierdz($win,$opis,$saveFn,$w=$null,$braki=@(),$tkey=''){
     # yes
     Front $win
     if(& $saveFn $win){ Write-Host "   zapisano" -ForegroundColor Green } else { Read-Host "   nie znalazlem przycisku zapisu - zrob recznie i ENTER" }
-    Start-Sleep -Milliseconds 600; Obsluz-Ostrzezenie $win | Out-Null; return 'saved'
+    Pauza 600; Obsluz-Ostrzezenie $win | Out-Null; return 'saved'
   }
 }
 
@@ -322,7 +328,7 @@ if($mode -eq 'panel'){
   # ---- wpisz komentarz/grupe/osobe do ticketa, potem zapytaj o zapis ----
   function Zastosuj($comment,$public,$grupa,$osoba){
     $win=Get-EdgeWindow; if(-not $win){ [System.Windows.Forms.MessageBox]::Show('Nie znalazlem okna Edge.') | Out-Null; return }
-    $pf.WindowState='Minimized'; [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 500   # zejdz z drogi, oddaj fokus Edge
+    $pf.WindowState='Minimized'; [System.Windows.Forms.Application]::DoEvents(); Pauza 500   # zejdz z drogi, oddaj fokus Edge
     try{
       if($comment){ $script:KomentarzPublic=[bool]$public; Akcja-Komentarz $win $comment | Out-Null }
       if($grupa){ Akcja-Grupa $win $grupa | Out-Null }
@@ -332,9 +338,9 @@ if($mode -eq 'panel'){
         $pf.WindowState='Normal'; $pf.TopMost=$true; $pf.Activate()
         $odp=[System.Windows.Forms.MessageBox]::Show("Komentarz wpisany.`n`nTAK = zapisz i przejdz do nastepnego ticketa`nNIE = zostaw niezapisane (sprawdze recznie)","Panel - potwierdz",'YesNo','Question')
         if($odp -ne 'Yes'){ Write-Host "   pominieto zapis (Twoj wybor)" -ForegroundColor DarkGray; return }
-        $pf.WindowState='Minimized'; [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 500
+        $pf.WindowState='Minimized'; [System.Windows.Forms.Application]::DoEvents(); Pauza 500
       }
-      Zapisz-Ticket $win | Out-Null; Start-Sleep -Milliseconds 700; Obsluz-Ostrzezenie $win | Out-Null
+      Zapisz-Ticket $win | Out-Null; Pauza 700; Obsluz-Ostrzezenie $win | Out-Null
     } finally { $pf.WindowState='Normal'; $pf.TopMost=$true; $pf.Activate() }
     [console]::Beep(800,200)
   }
@@ -500,7 +506,7 @@ Write-Host "SAP Ticket Router - PELNY (routing do zespolow)" -ForegroundColor Cy
 $win=Get-EdgeWindow; if(-not $win){ Write-Host "Nie znalazlem okna Edge." -ForegroundColor Red; return }
 $vd=Get-ViewDetails $win; Write-Host ("Widocznych na starcie: "+$vd.Count) -ForegroundColor Green
 if($vd.Count -eq 0){ Write-Host "Brak 'View Details'." -ForegroundColor Red; return }
-for($c=6;$c -ge 1;$c--){ Write-Host ("Start za "+$c+"s - zostaw myszke...") -ForegroundColor Yellow; Start-Sleep -Seconds 1 }
+for($c=4;$c -ge 1;$c--){ Write-Host ("Start za "+$c+"s - zostaw myszke...") -ForegroundColor Yellow; Start-Sleep -Seconds 1 }
 
 $routed=0; $nasze=0; $commented=0; $waiting=0; $powroty=0; $doReki=@(); $seen=@{}; $stall=0; $nr=0; $wyniki=@()
 $historia=@{}
@@ -519,12 +525,12 @@ Write-Host ("Historia odeslanych: "+$historia.Count+" numerow (pamiec: "+$(if($H
 
 while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
   $win=Get-EdgeWindow; $vd=Get-ViewDetails $win
-  if($vd.Count -eq 0){ Start-Sleep -Milliseconds 1200; $stall++; continue }
+  if($vd.Count -eq 0){ Pauza 1200; $stall++; continue }
   $target=$null; $tkey=$null
   foreach($btn in $vd){ $key=Get-RowKey $btn; if($key -and -not $seen.ContainsKey($key)){ $target=$btn; $tkey=$key; break } }
-  if(-not $target){ Write-Host "Widoczne zrobione - przewijam..." -ForegroundColor DarkGray; Przewin-Dol $vd; Start-Sleep -Milliseconds 900; $stall++; continue }
+  if(-not $target){ Write-Host "Widoczne zrobione - przewijam..." -ForegroundColor DarkGray; Przewin-Dol $vd; Pauza 900; $stall++; continue }
   $seen[$tkey]=1; $stall=0; $nr++
-  Do-Widoku $target; Start-Sleep -Milliseconds 300
+  Do-Widoku $target; Pauza 300
   $r=$target.Current.BoundingRectangle; if($r.Width -le 0){ continue }
   Front $win
   Klik-XY ([int]($r.X+$r.Width/2)) ([int]($r.Y+$r.Height/2)); Start-Sleep -Milliseconds $CzasLadowania
@@ -593,7 +599,7 @@ while($stall -lt 4 -and $seen.Count -lt $MaxTicketow){
   }
   $wyniki += [pscustomobject]@{ Czas=(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'); Ticket=$tkey; System=$w.System; Team=$w.Team; Regula=$w.Regula; Akcja=$akcja; Braki=($brakiAll -join '+'); User=$w.UserName; UserId=$w.UserId; Role=($w.Role -join ';') }
 
-  $win=Get-EdgeWindow; Wstecz $win; Start-Sleep -Milliseconds 700; $win=Get-EdgeWindow; Obsluz-Ostrzezenie $win; Start-Sleep -Milliseconds $CzasListy
+  $win=Get-EdgeWindow; Wstecz $win; Pauza 700; $win=Get-EdgeWindow; Obsluz-Ostrzezenie $win; Start-Sleep -Milliseconds $CzasListy
 }
 
 Write-Host ""; Write-Host "=========== PODSUMOWANIE ===========" -ForegroundColor Cyan
