@@ -281,12 +281,14 @@ function Zatwierdz($win,$opis,$saveFn,$w=$null,$braki=@(),$tkey=''){
       continue
     }
     if($odp -eq 'osoba'){
-      $os=[Microsoft.VisualBasic.Interaction]::InputBox('Podaj ID osoby (np. M0123456):','Przypisz osobe','')
+      $wb=@($Koledzy | ForEach-Object { [pscustomobject]@{ L=$_; V=$_ } })
+      $os=Wybierz-Zliste 'Przypisz osobe' 'Wybierz osobe z listy (albo wpisz ID):' $wb "$env:USERPROFILE\sap_panel_osoby.txt"
       if($os){ Akcja-Osoba $win $os | Out-Null }
       continue
     }
     if($odp -eq 'grupa'){
-      $gr=[Microsoft.VisualBasic.Interaction]::InputBox('Podaj nazwe grupy (np. GLOBAL-SERVICEDESK):','Zmien grupe','')
+      $wb=@($Reguly | ForEach-Object { $_.Team } | Where-Object { $_ } | Select-Object -Unique | ForEach-Object { [pscustomobject]@{ L=$_; V=$_ } })
+      $gr=Wybierz-Zliste 'Zmien grupe' 'Wybierz grupe z listy (albo wpisz nazwe):' $wb "$env:USERPROFILE\sap_panel_grupy.txt"
       if($gr){ Akcja-Grupa $win $gr | Out-Null }
       continue
     }
@@ -414,26 +416,36 @@ if($mode -eq 'panel'){
 # Nie wkleja komentarza automatem. Pokazuje liste propozycji (w tym Twoje wlasne kafelki
 # z panelu) + pole do edycji + Public. Zwraca Action = comment/none/stop.
 function Wybierz-Komentarz($tkey,$braki,$w){
-  $opcje=@()
-  $sug=Komentarz-Tresc $braki
-  if($sug){ $opcje+=[pscustomobject]@{ L='Sugerowany (wg brakow)'; Text=$sug; Public=$true } }
-  if(-not $w.RefUser){ $opcje+=[pscustomobject]@{ L='Zapytaj o reference user'; Text='Hi, please provide the reference user (the account whose access should be copied). Thanks.'; Public=$true } }
-  $opcje+=[pscustomobject]@{ L='Podaj system + user'; Text='Hi, please provide the SAP system (e.g. P50) and the user ID (e.g. M0123456). Thanks.'; Public=$true }
-  $opcje+=[pscustomobject]@{ L='Podaj role (lub reference user)'; Text='Hi, please provide the role(s) required, or a reference user to copy access from. Thanks.'; Public=$true }
   $PlikKafelki="$env:USERPROFILE\sap_panel_kafelki.txt"
-  if(Test-Path $PlikKafelki){ try{ foreach($c in @(Import-Csv $PlikKafelki)){ if($c.Text){ $opcje+=[pscustomobject]@{ L=('[moj] '+$c.Text); Text=$c.Text; Public=($c.Public -eq '1') } } } }catch{} }
+  $opcje=New-Object System.Collections.ArrayList
+  $sug=Komentarz-Tresc $braki
+  if($sug){ [void]$opcje.Add([pscustomobject]@{ L='Sugerowany (wg brakow)'; Text=$sug; Public=$true }) }
+  if(-not $w.RefUser){ [void]$opcje.Add([pscustomobject]@{ L='Zapytaj o reference user'; Text='Hi, please provide the reference user (the account whose access should be copied). Thanks.'; Public=$true }) }
+  [void]$opcje.Add([pscustomobject]@{ L='Podaj system + user'; Text='Hi, please provide the SAP system (e.g. P50) and the user ID (e.g. M0123456). Thanks.'; Public=$true })
+  [void]$opcje.Add([pscustomobject]@{ L='Podaj role (lub reference user)'; Text='Hi, please provide the role(s) required, or a reference user to copy access from. Thanks.'; Public=$true })
+  if(Test-Path $PlikKafelki){ try{ foreach($c in @(Import-Csv $PlikKafelki)){ if($c.Text){ [void]$opcje.Add([pscustomobject]@{ L=('[moj] '+$c.Text); Text=$c.Text; Public=($c.Public -eq '1') }) } } }catch{} }
 
   $f=New-Object System.Windows.Forms.Form
-  $f.Text=('Komentarz - '+$tkey); $f.Width=560; $f.Height=430; $f.TopMost=$true; $f.StartPosition='CenterScreen'; $f.FormBorderStyle='FixedDialog'; $f.MaximizeBox=$false; $f.MinimizeBox=$false
+  $f.Text=('Komentarz - '+$tkey); $f.Width=560; $f.Height=440; $f.TopMost=$true; $f.StartPosition='CenterScreen'; $f.FormBorderStyle='FixedDialog'; $f.MaximizeBox=$false; $f.MinimizeBox=$false
   $info=New-Object System.Windows.Forms.Label; $info.Text=('Ticket NASZE, niekompletny. Braki: '+($braki -join ', ')+'.  Wybierz komentarz (albo bez).'); $info.Left=12; $info.Top=10; $info.Width=524; $info.Height=32; $f.Controls.Add($info)
-  $lst=New-Object System.Windows.Forms.ListBox; $lst.Left=12; $lst.Top=46; $lst.Width=524; $lst.Height=148; foreach($o in $opcje){ [void]$lst.Items.Add($o.L) }; $f.Controls.Add($lst)
-  $txt=New-Object System.Windows.Forms.TextBox; $txt.Multiline=$true; $txt.Left=12; $txt.Top=202; $txt.Width=524; $txt.Height=88; $txt.ScrollBars='Vertical'; $f.Controls.Add($txt)
-  $cbPub=New-Object System.Windows.Forms.CheckBox; $cbPub.Text='Public (widzi zglaszajacy)'; $cbPub.Left=12; $cbPub.Top=298; $cbPub.Width=260; $cbPub.Checked=$true; $f.Controls.Add($cbPub)
-  $lst.Add_SelectedIndexChanged({ $i=$lst.SelectedIndex; if($i -ge 0){ $txt.Text=$opcje[$i].Text; $cbPub.Checked=[bool]$opcje[$i].Public } }.GetNewClosure())
+  $lst=New-Object System.Windows.Forms.ListBox; $lst.Left=12; $lst.Top=46; $lst.Width=524; $lst.Height=140; foreach($o in $opcje){ [void]$lst.Items.Add($o.L) }; $f.Controls.Add($lst)
+  $txt=New-Object System.Windows.Forms.TextBox; $txt.Multiline=$true; $txt.Left=12; $txt.Top=194; $txt.Width=524; $txt.Height=84; $txt.ScrollBars='Vertical'; $f.Controls.Add($txt)
+  $cbPub=New-Object System.Windows.Forms.CheckBox; $cbPub.Text='Public (widzi zglaszajacy)'; $cbPub.Left=12; $cbPub.Top=286; $cbPub.Width=240; $cbPub.Checked=$true; $f.Controls.Add($cbPub)
+  $bSave=New-Object System.Windows.Forms.Button; $bSave.Text='+ Zapisz na liste (kafelek)'; $bSave.Left=270; $bSave.Top=282; $bSave.Width=266; $bSave.Height=30; $f.Controls.Add($bSave)
+  $lst.Add_SelectedIndexChanged({ $i=$lst.SelectedIndex; if($i -ge 0 -and $i -lt $opcje.Count){ $txt.Text=$opcje[$i].Text; $cbPub.Checked=[bool]$opcje[$i].Public } }.GetNewClosure())
   if($opcje.Count -gt 0){ $lst.SelectedIndex=0 }
-  $bAdd=New-Object System.Windows.Forms.Button; $bAdd.Text='Dodaj wybrany komentarz'; $bAdd.Left=12; $bAdd.Top=328; $bAdd.Width=250; $bAdd.Height=38; $bAdd.BackColor=[System.Drawing.Color]::FromArgb(46,120,210); $bAdd.ForeColor='White'
-  $bNone=New-Object System.Windows.Forms.Button; $bNone.Text='Bez komentarza (tylko osoba)'; $bNone.Left=272; $bNone.Top=328; $bNone.Width=190; $bNone.Height=38
-  $bStop=New-Object System.Windows.Forms.Button; $bStop.Text='STOP'; $bStop.Left=470; $bStop.Top=328; $bStop.Width=66; $bStop.Height=38; $bStop.ForeColor='Red'
+  $bSave.Add_Click({
+    if([string]::IsNullOrWhiteSpace($txt.Text)){ [System.Windows.Forms.MessageBox]::Show('Wpisz tresc komentarza.') | Out-Null; return }
+    $nowy=[pscustomobject]@{ Public=$(if($cbPub.Checked){'1'}else{'0'}); Text=$txt.Text.Trim() }
+    $ex=@(); if(Test-Path $PlikKafelki){ try{ $ex=@(Import-Csv $PlikKafelki) }catch{} }
+    @($ex+$nowy) | Select-Object Public,Text | Export-Csv -Path $PlikKafelki -NoTypeInformation -Encoding UTF8
+    $o=[pscustomobject]@{ L=('[moj] '+$nowy.Text); Text=$nowy.Text; Public=($nowy.Public -eq '1') }
+    [void]$opcje.Add($o); [void]$lst.Items.Add($o.L); $lst.SelectedIndex=$lst.Items.Count-1
+    [console]::Beep(800,150)
+  }.GetNewClosure())
+  $bAdd=New-Object System.Windows.Forms.Button; $bAdd.Text='Dodaj wybrany komentarz'; $bAdd.Left=12; $bAdd.Top=340; $bAdd.Width=250; $bAdd.Height=38; $bAdd.BackColor=[System.Drawing.Color]::FromArgb(46,120,210); $bAdd.ForeColor='White'
+  $bNone=New-Object System.Windows.Forms.Button; $bNone.Text='Bez komentarza (tylko osoba)'; $bNone.Left=272; $bNone.Top=340; $bNone.Width=190; $bNone.Height=38
+  $bStop=New-Object System.Windows.Forms.Button; $bStop.Text='STOP'; $bStop.Left=470; $bStop.Top=340; $bStop.Width=66; $bStop.Height=38; $bStop.ForeColor='Red'
   $bAdd.Add_Click({ $f.Tag=[pscustomobject]@{ Action='comment'; Text=$txt.Text; Public=$cbPub.Checked }; $f.Close() }.GetNewClosure())
   $bNone.Add_Click({ $f.Tag=[pscustomobject]@{ Action='none' }; $f.Close() }.GetNewClosure())
   $bStop.Add_Click({ $f.Tag=[pscustomobject]@{ Action='stop' }; $f.Close() }.GetNewClosure())
@@ -442,6 +454,42 @@ function Wybierz-Komentarz($tkey,$braki,$w){
   $rr=$f.Tag; $f.Dispose()
   if(-not $rr){ return [pscustomobject]@{ Action='none' } }
   return $rr
+}
+
+# ---------------- WYBOR Z LISTY (grupa / osoba) z zapisem wlasnych ----------------
+# $wbudowane = tablica @{ L=etykieta; V=wartosc }. $plik = CSV (kolumna V) z wlasnymi.
+# Zwraca wybrana wartosc (string) albo '' gdy anulowano.
+function Wybierz-Zliste($tytul,$naglowek,$wbudowane,$plik){
+  $opcje=New-Object System.Collections.ArrayList
+  foreach($o in $wbudowane){ [void]$opcje.Add($o) }
+  if($plik -and (Test-Path $plik)){ try{ foreach($c in @(Import-Csv $plik)){ if($c.V){ [void]$opcje.Add([pscustomobject]@{ L=('[moj] '+$c.V); V=$c.V }) } } }catch{} }
+
+  $f=New-Object System.Windows.Forms.Form
+  $f.Text=$tytul; $f.Width=520; $f.Height=420; $f.TopMost=$true; $f.StartPosition='CenterScreen'; $f.FormBorderStyle='FixedDialog'; $f.MaximizeBox=$false; $f.MinimizeBox=$false
+  $info=New-Object System.Windows.Forms.Label; $info.Text=$naglowek; $info.Left=12; $info.Top=10; $info.Width=486; $info.Height=20; $f.Controls.Add($info)
+  $lst=New-Object System.Windows.Forms.ListBox; $lst.Left=12; $lst.Top=36; $lst.Width=486; $lst.Height=210; foreach($o in $opcje){ [void]$lst.Items.Add($o.L) }; $f.Controls.Add($lst)
+  $txt=New-Object System.Windows.Forms.TextBox; $txt.Left=12; $txt.Top=256; $txt.Width=360; $txt.Height=26; $f.Controls.Add($txt)
+  $bSave=New-Object System.Windows.Forms.Button; $bSave.Text='+ Zapisz'; $bSave.Left=382; $bSave.Top=254; $bSave.Width=116; $bSave.Height=28; $f.Controls.Add($bSave)
+  $lst.Add_SelectedIndexChanged({ $i=$lst.SelectedIndex; if($i -ge 0 -and $i -lt $opcje.Count){ $txt.Text=$opcje[$i].V } }.GetNewClosure())
+  if($opcje.Count -gt 0){ $lst.SelectedIndex=0 }
+  $bSave.Add_Click({
+    if([string]::IsNullOrWhiteSpace($txt.Text) -or -not $plik){ return }
+    $nowy=[pscustomobject]@{ V=$txt.Text.Trim() }
+    $ex=@(); if(Test-Path $plik){ try{ $ex=@(Import-Csv $plik) }catch{} }
+    @($ex+$nowy) | Select-Object V | Export-Csv -Path $plik -NoTypeInformation -Encoding UTF8
+    $o=[pscustomobject]@{ L=('[moj] '+$nowy.V); V=$nowy.V }
+    [void]$opcje.Add($o); [void]$lst.Items.Add($o.L); $lst.SelectedIndex=$lst.Items.Count-1
+    [console]::Beep(800,150)
+  }.GetNewClosure())
+  $bOk=New-Object System.Windows.Forms.Button; $bOk.Text='Wybierz'; $bOk.Left=12; $bOk.Top=298; $bOk.Width=242; $bOk.Height=42; $bOk.BackColor=[System.Drawing.Color]::FromArgb(46,120,210); $bOk.ForeColor='White'
+  $bCancel=New-Object System.Windows.Forms.Button; $bCancel.Text='Anuluj'; $bCancel.Left=262; $bCancel.Top=298; $bCancel.Width=236; $bCancel.Height=42
+  $bOk.Add_Click({ $f.Tag=$txt.Text.Trim(); $f.Close() }.GetNewClosure())
+  $bCancel.Add_Click({ $f.Tag=''; $f.Close() }.GetNewClosure())
+  $f.Controls.Add($bOk); $f.Controls.Add($bCancel)
+  [void]$f.ShowDialog()
+  $r=$f.Tag; $f.Dispose()
+  if(-not $r){ return '' }
+  return [string]$r
 }
 
 # --- Start ---
