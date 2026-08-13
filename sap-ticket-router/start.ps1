@@ -85,11 +85,12 @@ $PlikRotacji = "$env:USERPROFILE\sap_router_rotacja.txt"
 $MaxTicketow    = 50
 # --- PREDKOSC ---
 # $Tempo skaluje DROBNE opoznienia (klikanie/pisanie). Mniej = szybciej.
-#   1.0 = jak bylo, 0.6 = szybciej. Jak zaczyna sie mylic/klikac za wczesnie -> zwieksz.
-$Tempo          = 0.6
+#   1.0 = jak bylo (najbezpieczniej), 0.8 = troche szybciej.
+#   Jak zaczyna sie mylic/klikac za wczesnie -> ZWIEKSZ (0.9, 1.0). Jak stabilne -> zmniejszaj powoli.
+$Tempo          = 0.8
 # Te DWA to czekanie na ZALADOWANIE strony (NIE skalowane) - obniz ostroznie:
-$CzasLadowania  = 2000   # po kliknieciu ticketa (otwarcie szczegolow)
-$CzasListy      = 1300   # po powrocie do listy
+$CzasLadowania  = 2500   # po kliknieciu ticketa (otwarcie szczegolow)
+$CzasListy      = 1800   # po powrocie do listy
 function Pauza($ms){ $v=[int]($ms*$Tempo); if($v -lt 30){ $v=30 }; [System.Threading.Thread]::Sleep($v) }
 $Etykiety = @('#Application\s*Name\s*:+\s*([A-Za-z0-9]+)','SAP\s*ERP\s*System\s*:+\s*([A-Za-z0-9]+)','\bSystem\s*:+\s*([A-Za-z0-9]+)')
 
@@ -182,7 +183,7 @@ function Wstecz($win){ [Win]::SetForegroundWindow([IntPtr]$win.Current.NativeWin
 function Klik-EditAssignee($win){
   $edit=Find1 $win $CTL::Button 'edit assignee'; if(-not $edit){ $edit=Find1 $win $CTL::Hyperlink 'edit assignee' }
   if(-not $edit){ $edit=Find1 $win $CTL::Button 'edit' }
-  if($edit){ Write-Host ("   [edit] klikam '"+$edit.Current.Name+"'") -ForegroundColor DarkGray; Front $win; Klik-El $edit|Out-Null; Start-Sleep -Milliseconds 1500; return $true }
+  if($edit){ Write-Host ("   [edit] klikam '"+$edit.Current.Name+"'") -ForegroundColor DarkGray; Front $win; Klik-El $edit|Out-Null; Start-Sleep -Milliseconds 2000; return $true }
   Write-Host "   [edit] nie znalazlem 'Edit assignee'" -ForegroundColor Red; return $false
 }
 # znajdz pole ComboBox/Edit wg listy nazw (priorytet) z wykluczeniami; z retry
@@ -206,7 +207,7 @@ function Wpisz-Combo($win,$target,$wartosc){
   Front $win
   Klik-XY $cx $cy; Pauza 400
   [System.Windows.Forms.SendKeys]::SendWait('^a'); Pauza 150; [System.Windows.Forms.SendKeys]::SendWait('{DELETE}'); Pauza 200
-  [System.Windows.Forms.SendKeys]::SendWait((EscSK $wartosc)); Start-Sleep -Milliseconds 1000
+  [System.Windows.Forms.SendKeys]::SendWait((EscSK $wartosc)); Start-Sleep -Milliseconds 1300
   [System.Windows.Forms.SendKeys]::SendWait('{DOWN}'); Pauza 300
   [System.Windows.Forms.SendKeys]::SendWait('{ENTER}'); Pauza 300
 }
@@ -246,8 +247,11 @@ function Akcja-Komentarz($win,$msg){
 }
 # jesli wyskoczy "You have unsaved data. Do you want to continue?" - klika Yes/Tak/Continue/OK
 function Obsluz-Ostrzezenie($win){
-  Pauza 500
-  foreach($n in @('^Yes$','^Tak$','^Continue$','^OK$')){ $b=Find1 $win $CTL::Button $n; if($b){ Front $win; Klik-El $b|Out-Null; Pauza 700; Write-Host "   [ostrzezenie] kliknieto '$($b.Current.Name)'" -ForegroundColor DarkGray; return $true } }
+  # okno "unsaved data" moze pojawic sie z opoznieniem - kilka prob (nieskalowane, pewne)
+  for($i=0;$i -lt 4;$i++){
+    Start-Sleep -Milliseconds 450
+    foreach($n in @('^Yes$','^Tak$','^Continue$','^OK$')){ $b=Find1 $win $CTL::Button $n; if($b){ Front $win; Klik-El $b|Out-Null; Start-Sleep -Milliseconds 700; Write-Host "   [ostrzezenie] kliknieto '$($b.Current.Name)'" -ForegroundColor DarkGray; return $true } }
+  }
   return $false
 }
 
