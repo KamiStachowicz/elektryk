@@ -79,6 +79,8 @@ $NaszeWyjatki = @('BKP','BEP')                        # NIE nasze - ida wg tabel
 $Kinga = 'M0076236'
 # Rotacja miedzy kolegami (kompletne bez komentarza, niekompletne + komentarz)
 $Koledzy = @('M0076236','M0204125','M0227642','M0234670')   # bez Milosza i bez Kamila
+# Mapa ID -> imie (dla czytelnej listy przy 'Przypisz osobe'). Uzupelnij imiona:
+$OsobyNazwy = @{ 'M0076236'='Kinga'; 'M0204125'=''; 'M0227642'=''; 'M0234670'='' }
 $PlikRotacji = "$env:USERPROFILE\sap_router_rotacja.txt"
 $MaxTicketow    = 50
 $CzasLadowania  = 2500
@@ -281,7 +283,7 @@ function Zatwierdz($win,$opis,$saveFn,$w=$null,$braki=@(),$tkey=''){
       continue
     }
     if($odp -eq 'osoba'){
-      $wb=@($Koledzy | ForEach-Object { [pscustomobject]@{ L=$_; V=$_ } })
+      $wb=@($Koledzy | ForEach-Object { $nm=$OsobyNazwy[$_]; $lab=if($nm){ "$nm ($_)" }else{ $_ }; [pscustomobject]@{ L=$lab; V=$_ } })
       $os=Wybierz-Zliste 'Przypisz osobe' 'Wybierz osobe z listy (albo wpisz ID):' $wb "$env:USERPROFILE\sap_panel_osoby.txt"
       if($os){ Akcja-Osoba $win $os | Out-Null }
       continue
