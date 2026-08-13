@@ -214,7 +214,7 @@ function Akcja-Komentarz($win,$msg){
 # jesli wyskoczy "You have unsaved data. Do you want to continue?" - klika Yes/Tak/Continue/OK
 function Obsluz-Ostrzezenie($win){
   Start-Sleep -Milliseconds 500
-  foreach($n in @('^Yes$','^Tak$','^Continue$','^OK$')){ $b=Find1 $win $CTL::Button $n; if($b){ Front $win; Klik-El $b|Out-Null; Start-Sleep -Milliseconds 700; Write-Host "   [ostrzezenie] kliknieto '$($b.Current.Name)'" -ForegroundColor DarkGray; return $true } }
+  foreach($n in @('^Yes$','^Tak$','^Continue$','^OK$')){ $b=Find1 $win $CTL::Button $n; if($b){ Front $win; try{ $b.SetFocus() }catch{}; Start-Sleep -Milliseconds 150; Klik-El $b|Out-Null; Start-Sleep -Milliseconds 250; [System.Windows.Forms.SendKeys]::SendWait('{ENTER}'); Start-Sleep -Milliseconds 700; Write-Host "   [ostrzezenie] kliknieto '$($b.Current.Name)'" -ForegroundColor DarkGray; return $true } }
   return $false
 }
 
